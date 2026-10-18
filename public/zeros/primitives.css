@@ -1,0 +1,342 @@
+/**
+ * zerOS design-system primitives — reusable control anatomy.
+ * Depends on tokens.css + product-bridge.css (motion/color aliases).
+ *
+ * Products compose these classes; do not re-skin primary controls per page.
+ */
+
+/* —— Buttons —— */
+.z-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--z-space-2, 8px);
+  min-height: var(--z-control-min, 44px);
+  padding: 0 var(--z-space-4, 16px);
+  border: 1px solid var(--hair-2, var(--z-border-default));
+  border-radius: var(--z-radius-control, 6px);
+  background: var(--glass, var(--z-glass));
+  color: var(--ink, var(--z-text-primary));
+  font: 600 13px/1.2 var(--sans, var(--z-font-operational));
+  cursor: pointer;
+  transition:
+    transform var(--motion-immediate, 140ms) var(--ease-press),
+    border-color var(--motion-immediate, 140ms) var(--ease-press),
+    background var(--motion-immediate, 140ms) var(--ease-press),
+    color var(--motion-immediate, 140ms) var(--ease-press),
+    box-shadow var(--motion-state, 240ms) var(--ease-settle);
+}
+.z-btn:hover {
+  border-color: color-mix(in srgb, var(--gold, var(--z-action)) 45%, var(--hair-2));
+  color: var(--ink);
+}
+.z-btn:active {
+  transform: scale(0.97);
+}
+.z-btn:focus-visible {
+  outline: 2px solid var(--z-focus, var(--gold));
+  outline-offset: 2px;
+}
+.z-btn:disabled,
+.z-btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+.z-btn--primary {
+  background: color-mix(in srgb, var(--gold, var(--z-action)) 22%, var(--glass));
+  border-color: color-mix(in srgb, var(--gold) 50%, var(--hair-2));
+  color: var(--ink);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--gold) 18%, transparent);
+}
+.z-btn--ghost {
+  background: transparent;
+  border-color: var(--hair-soft, var(--z-border-quiet));
+}
+.z-btn--danger {
+  border-color: color-mix(in srgb, var(--danger, var(--z-danger)) 45%, var(--hair));
+  color: var(--danger, var(--z-danger));
+}
+.z-btn--sm {
+  min-height: 32px;
+  padding: 0 var(--z-space-3, 12px);
+  font-size: 12px;
+  border-radius: calc(var(--z-radius-control, 6px) - 1px);
+}
+
+/* Round glass icon control (GButton anatomy) */
+.z-icon-btn {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--hair, var(--z-border-subtle));
+  background: var(--glass, var(--z-glass));
+  color: var(--ink-2, var(--z-text-secondary));
+  cursor: pointer;
+  backdrop-filter: blur(var(--z-blur-glass, 20px));
+  -webkit-backdrop-filter: blur(var(--z-blur-glass, 20px));
+  transition:
+    transform var(--motion-immediate, 140ms) var(--ease-press),
+    border-color var(--motion-immediate, 140ms) var(--ease-press),
+    background var(--motion-immediate, 140ms) var(--ease-press),
+    color var(--motion-immediate, 140ms) var(--ease-press),
+    box-shadow var(--motion-state, 240ms) var(--ease-settle);
+}
+.z-icon-btn:hover {
+  border-color: color-mix(in srgb, var(--gold) 40%, var(--hair));
+  color: var(--ink);
+}
+.z-icon-btn:active {
+  transform: scale(0.96);
+}
+.z-icon-btn:focus-visible {
+  outline: 2px solid var(--z-focus, var(--gold));
+  outline-offset: 2px;
+}
+.z-icon-btn.is-active,
+.z-icon-btn[aria-pressed="true"] {
+  color: #1c1810;
+  border-color: color-mix(in srgb, var(--gold) 60%, transparent);
+  background: radial-gradient(
+    circle at 50% 35%,
+    color-mix(in srgb, var(--gold-bright) 95%, white),
+    color-mix(in srgb, var(--gold-dim) 75%, transparent)
+  );
+  box-shadow: 0 0 22px color-mix(in srgb, var(--gold) 50%, transparent);
+}
+
+/* Chips / filters */
+.z-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--hair);
+  border-radius: var(--z-radius-pill, 999px);
+  background: transparent;
+  color: var(--ink-2);
+  font: 600 11px/1 var(--sans);
+  cursor: pointer;
+  transition:
+    transform var(--motion-immediate, 140ms) var(--ease-press),
+    border-color var(--motion-immediate, 140ms) var(--ease-press),
+    background var(--motion-immediate, 140ms) var(--ease-press),
+    color var(--motion-immediate, 140ms) var(--ease-press);
+}
+.z-chip:hover {
+  color: var(--ink);
+  border-color: var(--hair-2);
+}
+.z-chip:active {
+  transform: scale(0.97);
+}
+.z-chip.is-active,
+.z-chip[aria-pressed="true"] {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--gold) 45%, var(--hair));
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+}
+
+/* Card / glass surface */
+.z-card {
+  border: 1px solid var(--hair);
+  border-radius: var(--z-radius-card, 8px);
+  background: var(--glass);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+}
+.z-card--raised {
+  background: var(--glass-strong);
+  border-radius: var(--z-radius-sheet, 14px);
+  box-shadow: var(--shadow-pop);
+}
+
+/* Meter track */
+.z-bar,
+.bar {
+  position: relative;
+  display: inline-block;
+  height: 4px;
+  border-radius: var(--z-radius-pill);
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  overflow: hidden;
+  vertical-align: middle;
+}
+.z-bar > i,
+.bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  transition: width var(--motion-transition, 560ms) var(--ease-settle);
+}
+
+/* Field */
+.z-field {
+  display: grid;
+  gap: 6px;
+}
+.z-field > span {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.z-field input,
+.z-field textarea,
+.z-field select {
+  min-height: var(--z-control-min, 44px);
+  padding: 10px 12px;
+  border: 1px solid var(--hair);
+  border-radius: var(--z-radius-control);
+  background: color-mix(in srgb, var(--z-canvas-raised, #151611) 80%, transparent);
+  color: var(--ink);
+  font: 400 14px/1.35 var(--sans);
+  transition:
+    border-color var(--motion-immediate, 140ms) var(--ease-press),
+    box-shadow var(--motion-immediate, 140ms) var(--ease-press);
+}
+.z-field input:focus-visible,
+.z-field textarea:focus-visible,
+.z-field select:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--gold) 55%, var(--hair));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 18%, transparent);
+}
+
+/* Icon button size / shape variants (suite + product) */
+.z-icon-btn--lg {
+  width: 44px;
+  height: 44px;
+}
+.z-icon-btn--square {
+  border-radius: var(--z-radius-control, 8px);
+}
+
+/* Segmented control — filters, workspace switch, viewport, sort */
+.z-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 3px;
+  border: 1px solid var(--hair, var(--z-border-subtle));
+  border-radius: calc(var(--z-radius-control, 6px) + 1px);
+  background: var(--z-canvas-raised, var(--glass));
+}
+.z-seg__item {
+  min-width: 44px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: var(--z-radius-control, 6px);
+  background: transparent;
+  color: var(--ink-3, var(--z-text-tertiary));
+  font: 700 10px/1 var(--sans, var(--z-font-operational));
+  cursor: pointer;
+  transition:
+    transform var(--motion-immediate, 140ms) var(--ease-press),
+    border-color var(--motion-immediate, 140ms) var(--ease-press),
+    background var(--motion-immediate, 140ms) var(--ease-press),
+    color var(--motion-immediate, 140ms) var(--ease-press);
+}
+.z-seg__item:hover {
+  color: var(--ink);
+  border-color: var(--hair-2, var(--z-border-default));
+}
+.z-seg__item:active {
+  transform: scale(0.98);
+}
+.z-seg__item:focus-visible {
+  outline: 2px solid var(--z-focus, var(--gold));
+  outline-offset: 1px;
+}
+.z-seg__item.is-active,
+.z-seg__item[aria-pressed="true"],
+.z-seg__item[aria-selected="true"] {
+  color: #211b10;
+  border-color: var(--gold, var(--z-action));
+  background: var(--gold, var(--z-action));
+  box-shadow: 0 2px 9px color-mix(in srgb, var(--gold) 25%, transparent);
+}
+
+/* Compact text pill (immersive chrome, secondary toolbar) */
+.z-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--hair-2, var(--z-border-default));
+  border-radius: var(--z-radius-pill, 999px);
+  background: var(--glass, var(--z-glass));
+  color: var(--ink-2, var(--z-text-secondary));
+  font: 600 11px/1 var(--sans);
+  cursor: pointer;
+  transition:
+    transform var(--motion-immediate, 140ms) var(--ease-press),
+    border-color var(--motion-immediate, 140ms) var(--ease-press),
+    color var(--motion-immediate, 140ms) var(--ease-press),
+    background var(--motion-immediate, 140ms) var(--ease-press);
+}
+.z-pill:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.z-pill:active {
+  transform: scale(0.97);
+}
+.z-pill:focus-visible {
+  outline: 2px solid var(--z-focus, var(--gold));
+  outline-offset: 2px;
+}
+.z-pill.is-active,
+.z-pill[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--gold) 50%, var(--hair));
+  color: var(--ink);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+}
+.z-pill--exit {
+  border-color: color-mix(in srgb, var(--danger, var(--z-danger)) 40%, var(--hair));
+  color: var(--danger, var(--z-danger));
+}
+
+/* Press utility for any control still using page classes */
+.z-pressable {
+  transition: transform var(--motion-immediate, 140ms) var(--ease-press);
+}
+.z-pressable:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .z-btn,
+  .z-icon-btn,
+  .z-chip,
+  .z-seg__item,
+  .z-pill,
+  .z-bar > i,
+  .bar > i,
+  .z-pressable,
+  .z-field input,
+  .z-field textarea,
+  .z-field select {
+    transition: none;
+  }
+  .z-btn:active,
+  .z-icon-btn:active,
+  .z-chip:active,
+  .z-seg__item:active,
+  .z-pill:active,
+  .z-pressable:active {
+    transform: none;
+  }
+}

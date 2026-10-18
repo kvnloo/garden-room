@@ -1,0 +1,9 @@
+{
+  "name": "Garden Room",
+  "short_name": "Garden",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#14181a",
+  "theme_color": "#14181a",
+  "icons": [{ "src": "plants/p07.webp", "sizes": "459x512", "type": "image/webp" }]
+}

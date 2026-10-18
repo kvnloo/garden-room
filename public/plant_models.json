@@ -1,0 +1,127 @@
+{
+ "p01": {
+  "family": "plectranthus",
+  "pot": "wicker_grey",
+  "approved": false
+ },
+ "p02": {
+  "family": "eggplant",
+  "pot": "dark_plastic",
+  "approved": true
+ },
+ "p03": {
+  "family": "curry_leaf",
+  "pot": "terracotta_brown",
+  "approved": true
+ },
+ "p04": {
+  "family": "pepper",
+  "pot": "wicker_grey",
+  "approved": true
+ },
+ "p05": {
+  "family": "pepper",
+  "pot": "wicker_taupe",
+  "approved": true
+ },
+ "p06": {
+  "family": "curry_leaf",
+  "pot": "dark_plastic",
+  "approved": true
+ },
+ "p07": {
+  "family": "banana",
+  "pot": "barrel_dark",
+  "approved": true
+ },
+ "p08": {
+  "family": "aloe",
+  "pot": "painted_ceramic",
+  "approved": true
+ },
+ "p09": {
+  "family": "herb_bush",
+  "pot": "barrel_dark",
+  "approved": true
+ },
+ "p10": {
+  "family": "raised_planter",
+  "pot": "raised_planter_box",
+  "approved": true
+ },
+ "p11": {
+  "family": "pepper",
+  "pot": "wicker_dark",
+  "approved": true
+ },
+ "p12": {
+  "family": "curry_leaf",
+  "pot": "dark_plastic",
+  "approved": true
+ },
+ "p13": {
+  "family": "seedling",
+  "pot": "grey_plastic",
+  "approved": true
+ },
+ "p14": {
+  "family": "seedling",
+  "pot": "grey_plastic",
+  "approved": true
+ },
+ "p15": {
+  "family": "seedling",
+  "pot": "white_scalloped",
+  "approved": true
+ },
+ "p16": {
+  "family": "broadleaf_shrub",
+  "pot": "mosaic_ceramic",
+  "approved": true
+ },
+ "p17": {
+  "family": "seedling",
+  "pot": "grey_plastic",
+  "approved": true
+ },
+ "p18": {
+  "family": "seedling",
+  "pot": "seedling_tray",
+  "approved": true
+ },
+ "p19": {
+  "family": "seedling",
+  "pot": "white_scalloped",
+  "approved": true
+ },
+ "p20": {
+  "family": "raised_planter",
+  "pot": "raised_planter_box",
+  "approved": true
+ },
+ "p21": {
+  "family": "seedling",
+  "pot": "blue_ceramic",
+  "approved": true
+ },
+ "p22": {
+  "family": "tomato",
+  "pot": "dark_plastic",
+  "approved": true
+ },
+ "p23": {
+  "family": "broadleaf_shrub",
+  "pot": "dark_plastic",
+  "approved": true
+ },
+ "p24": {
+  "family": "flowering_basil",
+  "pot": "dark_plastic",
+  "approved": true
+ },
+ "p25": {
+  "family": "flowering_basil",
+  "pot": "dark_plastic",
+  "approved": true
+ }
+}

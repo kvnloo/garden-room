@@ -1,0 +1,42 @@
+/* Room tools inherit the host's zerOS Living Night fonts and liquid glass. */
+/* Extra module tools remain reachable by a horizontal thumb swipe. */
+#dock:has([data-panel="ar"]) { overflow-x: auto; justify-content: flex-start; gap: 2px; scrollbar-width: none; }
+#dock:has([data-panel="ar"]) button { flex: 0 0 52px; }
+#gr-ar[hidden], #gr-ar [hidden] { display: none !important; }
+#gr-ar { position: fixed; inset: 0; z-index: 30; background: #0b0d0b; overflow: hidden; color: var(--ink); }
+#gr-ar[data-medium="xr"] { background: transparent; }
+#ar-view { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#gr-ar .ar-head { position: absolute; top: calc(env(safe-area-inset-top) + 10px); left: 10px; right: 10px; border-radius: 22px; padding: 13px 14px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+#gr-ar h3 { font-size: 26px; margin-top: 6px; }
+#gr-ar #ar-mode { color: var(--gold-bright); font-size: 9px; letter-spacing: .1em; }
+#gr-ar .ar-top { position: absolute; top: calc(env(safe-area-inset-top) + 110px); left: 10px; right: 10px; display: flex; gap: 10px; align-items: start; pointer-events: none; }
+#ar-map { width: 164px; height: 123px; border-radius: 18px; flex-shrink: 0; pointer-events: auto; touch-action: none; }
+#gr-ar .ar-readout { border-radius: 16px; padding: 10px; min-width: 0; font-size: 11px; color: var(--ink-2); }
+#ar-live { display: block; margin-top: 7px; font: 500 17px/1.15 var(--serif); color: var(--gold-bright); }
+#ar-cross { position: absolute; left: 50%; top: 40%; transform: translate(-50%,-50%); color: #a09b8c; font: 32px/1 var(--mono); pointer-events: none; text-shadow: 0 1px 4px #000; }
+/* The WebXR hit source is the centre view, not the gap above the controls. */
+#gr-ar[data-medium="xr"] #ar-cross { top: 50%; }
+#ar-cross.valid { color: #f5d793; }
+#gr-ar .ar-bottom { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 8px); left: 8px; right: 8px; max-height: 47dvh; overflow-y: auto; overscroll-behavior: contain; border-radius: 24px; padding: 10px 14px 12px; background-color: rgba(16,19,15,.76); }
+#gr-ar .ar-tabs { flex-wrap: nowrap; margin: 0 0 10px; }
+#gr-ar .ar-tabs .btn { flex: 1; padding: 0 8px; min-height: 40px; }
+#gr-ar .ar-tabs .on { background: rgba(217,182,115,.12); }
+#gr-ar .sub { color: var(--ink-2); line-height: 1.4; margin-bottom: 8px; font-size: 12px; }
+#gr-ar .row { gap: 7px; }
+#gr-ar select { max-width: 100%; min-width: 0; font-size: 12px; }
+#ar-item { width: 100%; margin-top: 7px; }
+#gr-ar #ar-dimensions .btn { padding: 0 10px; font-size: 12px; min-height: 40px; }
+#gr-ar #ar-orient select { flex: 1; }
+#gr-ar #ar-orient label { font-size: 12px; color: var(--ink-2); }
+#gr-ar .ar-start .btn { flex: 1; padding: 0 10px; font-size: 13px; }
+#gr-ar .ar-placement { margin-bottom: 5px; }
+#gr-ar #ar-place { flex: 1; }
+#gr-ar .ar-accuracy { margin: 9px 0 0; font-size: 8px; line-height: 1.4; letter-spacing: .08em; text-align: center; }
+.ar-main-position { position: fixed; right: 12px; bottom: calc(env(safe-area-inset-bottom) + var(--dock-h) + 22px); z-index: 3; padding: 8px 11px; border-radius: 20px; color: var(--gold-bright); font-size: 9px; pointer-events: none; }
+#ar-segments { font: 11px/1.7 var(--mono); color: var(--gold-bright); max-height: 90px; overflow: auto; }
+#ar-labels { position: absolute; inset: 0; pointer-events: none; }
+.ar-segment-label { position: absolute; border-radius: 8px; padding: 4px 7px; white-space: nowrap; transform: translate(-50%,-50%); font: 10px var(--mono); color: #ffe1a0; }
+#ar-photo-canvas { position: absolute; top: calc(env(safe-area-inset-top) + 100px); left: 10px; width: calc(100% - 20px); height: 36dvh; object-fit: contain; background: #080a08; border-radius: 18px; touch-action: manipulation; }
+#gr-ar[data-medium="photo"]:has(#ar-photo-canvas:not([hidden])) .ar-top { display: none; }
+#ar-photo-status { margin: 8px 0; }
+@media (max-width: 360px) { #ar-map { width: 140px; height: 105px; } #gr-ar .ar-head { padding: 10px; } #gr-ar h3 { font-size: 23px; } }

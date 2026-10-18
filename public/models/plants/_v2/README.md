@@ -1,0 +1,3 @@
+# Plant v2 review candidates — not production selection
+
+These files are frozen review candidates and a branching-adapter smoke fixture. The app selects only the parent directory's FAMILY.js through public/plant_models.json; presence here is NOT approval. Current qualified selection: aloe_r2.js copied byte-for-byte to ../aloe.js after both critics, technical/growth checks and no-change replay. All other families retain their original production source. Evidence and rejects: work/models/FAMILY/v2/; summary: work/models/v2-summary.json and docs/research/plant-quality-v2-results.md. Do not copy the newest filename into production.

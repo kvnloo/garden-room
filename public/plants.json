@@ -1,0 +1,252 @@
+[
+ {
+  "id": "p01",
+  "name": "Trailing plectranthus",
+  "src": "plants/p01.webp",
+  "photo": "20261018_121441.jpg",
+  "potD": 25,
+  "potH": 18,
+  "height": 45,
+  "light": "med"
+ },
+ {
+  "id": "p02",
+  "name": "Eggplant",
+  "src": "plants/p02.webp",
+  "photo": "20261018_121441.jpg",
+  "potD": 40,
+  "potH": 30,
+  "height": 90,
+  "light": "high"
+ },
+ {
+  "id": "p03",
+  "name": "Curry leaf (brown pot)",
+  "src": "plants/p03.webp",
+  "photo": "20261018_121441.jpg",
+  "potD": 40,
+  "potH": 32,
+  "height": 90,
+  "light": "high"
+ },
+ {
+  "id": "p04",
+  "name": "Pepper (grey wicker)",
+  "src": "plants/p04.webp",
+  "photo": "20261018_121441.jpg",
+  "potD": 30,
+  "potH": 25,
+  "height": 70,
+  "light": "high"
+ },
+ {
+  "id": "p05",
+  "name": "Chili (taupe wicker)",
+  "src": "plants/p05.webp",
+  "photo": "20261018_121441.jpg",
+  "potD": 35,
+  "potH": 30,
+  "height": 80,
+  "light": "high"
+ },
+ {
+  "id": "p06",
+  "name": "Curry leaf (dark pot)",
+  "src": "plants/p06.webp",
+  "photo": "20261018_121441.jpg",
+  "potD": 35,
+  "potH": 28,
+  "height": 90,
+  "light": "high"
+ },
+ {
+  "id": "p07",
+  "name": "Banana",
+  "src": "plants/p07.webp",
+  "photo": "20261018_121441.jpg",
+  "potD": 45,
+  "potH": 32,
+  "height": 150,
+  "light": "high"
+ },
+ {
+  "id": "p08",
+  "name": "Aloe (painted ceramic)",
+  "src": "plants/p08.webp",
+  "photo": "20261018_121441.jpg",
+  "potD": 18,
+  "potH": 15,
+  "height": 25,
+  "light": "high"
+ },
+ {
+  "id": "p09",
+  "name": "Herb barrel",
+  "src": "plants/p09.webp",
+  "photo": "20261018_121441.jpg",
+  "potD": 45,
+  "potH": 30,
+  "height": 80,
+  "light": "high"
+ },
+ {
+  "id": "p10",
+  "name": "Raised planter A (peppers)",
+  "src": "plants/p10.webp",
+  "photo": "20261018_121446.jpg",
+  "potD": 80,
+  "potH": 75,
+  "height": 110,
+  "light": "high"
+ },
+ {
+  "id": "p11",
+  "name": "Pepper (dark wicker)",
+  "src": "plants/p11.webp",
+  "photo": "20261018_121437.jpg",
+  "potD": 30,
+  "potH": 25,
+  "height": 60,
+  "light": "high"
+ },
+ {
+  "id": "p12",
+  "name": "Curry leaf (dark pot 2)",
+  "src": "plants/p12.webp",
+  "photo": "20261018_121437.jpg",
+  "potD": 35,
+  "potH": 28,
+  "height": 90,
+  "light": "high"
+ },
+ {
+  "id": "p13",
+  "name": "Small green pot 1",
+  "src": "plants/p13.webp",
+  "photo": "20261018_121437.jpg",
+  "potD": 12,
+  "potH": 10,
+  "height": 15,
+  "light": "med"
+ },
+ {
+  "id": "p14",
+  "name": "Small green pot 2",
+  "src": "plants/p14.webp",
+  "photo": "20261018_121437.jpg",
+  "potD": 12,
+  "potH": 10,
+  "height": 15,
+  "light": "med"
+ },
+ {
+  "id": "p15",
+  "name": "Tiny planter",
+  "src": "plants/p15.webp",
+  "photo": "20261018_121437.jpg",
+  "potD": 12,
+  "potH": 8,
+  "height": 15,
+  "light": "med"
+ },
+ {
+  "id": "p16",
+  "name": "Ficus (ceramic)",
+  "src": "plants/p16.webp",
+  "photo": "20261018_121446.jpg",
+  "potD": 20,
+  "potH": 18,
+  "height": 55,
+  "light": "med"
+ },
+ {
+  "id": "p17",
+  "name": "Seedlings (grey pot)",
+  "src": "plants/p17.webp",
+  "photo": "20261018_121446.jpg",
+  "potD": 20,
+  "potH": 18,
+  "height": 30,
+  "light": "high"
+ },
+ {
+  "id": "p18",
+  "name": "Seedling tray",
+  "src": "plants/p18.webp",
+  "photo": "20261018_121446.jpg",
+  "potD": 20,
+  "potH": 8,
+  "height": 15,
+  "light": "high"
+ },
+ {
+  "id": "p19",
+  "name": "Sprout (white pot)",
+  "src": "plants/p19.webp",
+  "photo": "20261018_121446.jpg",
+  "potD": 15,
+  "potH": 12,
+  "height": 20,
+  "light": "med"
+ },
+ {
+  "id": "p20",
+  "name": "Raised planter B",
+  "src": "plants/p20.webp",
+  "photo": "20261018_121449.jpg",
+  "potD": 80,
+  "potH": 75,
+  "height": 110,
+  "light": "high"
+ },
+ {
+  "id": "p21",
+  "name": "Seedlings (blue ceramic)",
+  "src": "plants/p21.webp",
+  "photo": "20261018_121504.jpg",
+  "potD": 25,
+  "potH": 20,
+  "height": 35,
+  "light": "high"
+ },
+ {
+  "id": "p22",
+  "name": "Tomato",
+  "src": "plants/p22.webp",
+  "photo": "20261018_121504.jpg",
+  "potD": 35,
+  "potH": 28,
+  "height": 100,
+  "light": "high"
+ },
+ {
+  "id": "p23",
+  "name": "Tall leafy shrub",
+  "src": "plants/p23.webp",
+  "photo": "20261018_121504.jpg",
+  "potD": 40,
+  "potH": 30,
+  "height": 120,
+  "light": "high"
+ },
+ {
+  "id": "p24",
+  "name": "Bushy herb",
+  "src": "plants/p24.webp",
+  "photo": "20261018_121513.jpg",
+  "potD": 35,
+  "potH": 25,
+  "height": 60,
+  "light": "med"
+ },
+ {
+  "id": "p25",
+  "name": "Holy basil (back pot)",
+  "src": "plants/p25.webp",
+  "photo": "20261018_121441.jpg",
+  "potD": 35,
+  "potH": 28,
+  "height": 60,
+  "light": "high"
+ }
+]

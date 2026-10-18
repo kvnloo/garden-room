@@ -1,0 +1,39 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>model preview</title>
+<link rel="icon" href="data:,">
+<style>html,body{margin:0;background:#c8c8c8;overflow:hidden}canvas{display:block}</style>
+<script type="importmap">{ "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }</script>
+</head><body>
+<script type="module">
+// /models/preview.html?m=plants/curry_leaf.js&view=front|three|side|top&h=0.9&potD=0.35&potH=0.28&pot=dark_plastic&seed=1
+import * as THREE from 'three';
+import { createPot } from './pots.js';
+const q = new URLSearchParams(location.search);
+const num = (k, d) => (q.has(k) ? parseFloat(q.get(k)) : d);
+const W = 768, H = 768;
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+r.setSize(W, H); r.outputColorSpace = THREE.SRGBColorSpace; document.body.appendChild(r.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xc8c8c8);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7a66, 1.5));
+const sun = new THREE.DirectionalLight(0xfff3e0, 1.6); sun.position.set(2, 4, 3); scene.add(sun);
+const potD = num('potD', 0.3), potH = num('potH', 0.25), h = num('h', 0.8);
+const root = new THREE.Group(); scene.add(root);
+const width = q.has('width') ? num('width') : undefined, depth = q.has('depth') ? num('depth') : undefined;
+const pot = createPot({ style: q.get('pot') || 'dark_plastic', diameter: potD, height: potH, width, depth, seed: num('seed', 1) });
+root.add(pot.group);
+if (q.get('m')) {
+  const mod = await import('./' + q.get('m'));
+  const plant = mod.createPlant({ height: h, spread: num('spread', potD * 1.6), potDiameter: potD, width, depth, seed: num('seed', 1) });
+  plant.position.y = pot.soilY; root.add(plant);
+}
+const box = new THREE.Box3().setFromObject(root), c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
+const R = Math.max(s.x, s.y, s.z) * 1.15;
+const cam = new THREE.PerspectiveCamera(30, W / H, 0.01, 50);
+const d = R / Math.tan(THREE.MathUtils.degToRad(15)) * 0.55;
+const v = q.get('view') || 'front';
+const dir = { front: [0, 0.18, 1], three: [0.75, 0.55, 0.75], side: [1, 0.18, 0], top: [0.001, 1, 0.001] }[v];
+cam.position.copy(c).add(new THREE.Vector3(...dir).normalize().multiplyScalar(d)); cam.lookAt(c);
+r.render(scene, cam);
+let tris = 0; root.traverse((o) => { if (o.isMesh) { const g = o.geometry; const n = (g.index ? g.index.count : g.attributes.position.count) / 3; tris += o.isInstancedMesh ? n * o.count : n; } });
+window.__stats = { tris: Math.round(tris), size: s.toArray().map((x) => +x.toFixed(3)) }; window.__ready = true;
+</script></body></html>

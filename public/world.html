@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Garden Room · look around</title>
+<link rel="icon" href="/plants/p07.webp">
+<style>
+html,body{margin:0;height:100%;background:#000;color:#eee;font:14px system-ui,sans-serif;overflow:hidden}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#bar{position:fixed;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;display:flex;gap:8px;align-items:center;background:linear-gradient(#000a,#0000)}
+a,button{color:#eee;background:#2a3236;border:1px solid #3a4448;border-radius:12px;padding:9px 13px;text-decoration:none;font:inherit}
+#msg{font-size:12px;opacity:.8}
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "/vendor/three/build/three.module.js",
+  "three/addons/": "/vendor/three/examples/jsm/",
+  "@sparkjsdev/spark": "/vendor/spark/dist/spark.module.min.js"
+} }
+</script>
+</head>
+<body>
+<div id="bar"><a href="/">← Room</a><button id="gyro">📱 Gyro</button><span id="msg"></span></div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+const q = new URLSearchParams(location.search), rid = q.get('r'), file = q.get('f');
+const url = `/renders/${encodeURIComponent(rid)}/${encodeURIComponent(file)}`;
+const msg = (t) => document.getElementById('msg').textContent = t;
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(70, 1, 0.01, 200);
+const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
+function resize() { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+const isSplat = /\.(spz|ply|splat|ksplat)$/i.test(file);
+if (isSplat) {
+  msg('loading splat…');
+  const { SparkRenderer, SplatMesh } = await import('@sparkjsdev/spark');
+  scene.add(new SparkRenderer({ renderer }));
+  const s = new SplatMesh({ url }); s.quaternion.set(1, 0, 0, 0); scene.add(s); // SHARP is OpenCV (y down, z forward)
+  await s.initialized; msg('drag to look · pinch to move');
+  camera.position.set(0, 0, 0.01); controls.target.set(0, 0, -1); controls.rotateSpeed = -0.4; controls.enableZoom = true;
+} else { // equirect panorama, or a flat render shown on a curved screen
+  const tex = await new THREE.TextureLoader().loadAsync(url); tex.colorSpace = THREE.SRGBColorSpace;
+  const pano = Math.abs(tex.image.width / tex.image.height - 2) < 0.15;
+  if (pano) { tex.mapping = THREE.EquirectangularReflectionMapping; scene.background = tex; }
+  else { const a = tex.image.width / tex.image.height; const g = new THREE.CylinderGeometry(3, 3, 6 / a * 1.2, 64, 1, true, -0.9, 1.8); g.scale(-1, 1, 1);
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: tex })); m.rotation.y = Math.PI; scene.add(m); }
+  camera.position.set(0, 0, 0.01); controls.target.set(0, 0, 0); controls.enableZoom = false; controls.rotateSpeed = -0.35;
+  msg(pano ? '360° panorama · drag to look' : 'flat render · drag to look');
+}
+let gyro = false, alpha0 = null;
+document.getElementById('gyro').onclick = async () => {
+  if (window.DeviceOrientationEvent?.requestPermission) await DeviceOrientationEvent.requestPermission();
+  gyro = !gyro; msg(gyro ? 'gyro on: move your phone' : 'gyro off');
+};
+const euler = new THREE.Euler(), qq = new THREE.Quaternion(), qx = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+addEventListener('deviceorientation', (e) => {
+  if (!gyro || e.alpha == null) return; if (alpha0 == null) alpha0 = e.alpha;
+  euler.set(THREE.MathUtils.degToRad(e.beta), THREE.MathUtils.degToRad(e.alpha - alpha0), -THREE.MathUtils.degToRad(e.gamma), 'YXZ');
+  qq.setFromEuler(euler).multiply(qx); const so = THREE.MathUtils.degToRad(screen.orientation?.angle || 0);
+  qq.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -so)); camera.quaternion.copy(qq);
+});
+renderer.setAnimationLoop(() => { if (!gyro) controls.update(); renderer.render(scene, camera); });
+</script>
+</body>
+</html>

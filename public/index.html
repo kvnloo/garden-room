@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en" data-zeros-theme="living-night" data-zeros-lens="garden">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0c0c0a">
+<title>Garden Room</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="plants/p07.webp">
+<link rel="stylesheet" href="/vendor/fonts/hanken-grotesk/400.css">
+<link rel="stylesheet" href="/vendor/fonts/hanken-grotesk/600.css">
+<link rel="stylesheet" href="/vendor/fonts/cormorant-garamond/500.css">
+<link rel="stylesheet" href="/vendor/fonts/cormorant-garamond/500-italic.css">
+<link rel="stylesheet" href="/vendor/fonts/ibm-plex-mono/400.css">
+<link rel="stylesheet" href="zeros/tokens.css">
+<link rel="stylesheet" href="zeros/product-bridge.css">
+<link rel="stylesheet" href="zeros/primitives.css">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "/vendor/three/build/three.module.js",
+  "three/addons/": "/vendor/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app">
+  <canvas id="c"></canvas>
+
+  <header id="hud">
+    <div id="scoreCard" class="lg">
+      <span class="micro">ARRANGEMENT</span>
+      <b id="score">–</b>
+      <span class="micro" id="lightPct">LIGHT –</span>
+    </div>
+    <div class="z-seg lg" id="mode" role="tablist">
+      <button class="z-seg__item is-active" data-mode="explore" role="tab">Explore</button>
+      <button class="z-seg__item" data-mode="edit" role="tab">Edit</button>
+    </div>
+    <div class="hud-right">
+      <button class="z-icon-btn lg" id="bView" aria-label="Change view"></button>
+      <button class="z-icon-btn lg" id="bLight" aria-label="Light map" aria-pressed="false"></button>
+      <button class="z-icon-btn lg" id="bFridge" aria-label="Open fridge" aria-pressed="false"></button>
+    </div>
+  </header>
+  <div id="warn" class="lg hidden"><i></i><span></span></div>
+  <div id="modeHint" class="micro"></div>
+
+  <section id="sheet" class="lg sheet hidden" aria-live="polite">
+    <div class="grab"></div>
+    <div id="sheetBody"></div>
+  </section>
+
+  <nav id="dock" class="lg"></nav>
+  <div id="toast" class="lg hidden"></div>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

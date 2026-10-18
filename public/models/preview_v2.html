@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="icon" href="data:,"><style>body{margin:0}canvas{display:block}</style><script type="importmap">{"imports":{"three":"/vendor/three/build/three.module.js","three/addons/":"/vendor/three/examples/jsm/"}}</script></head><body><script type="module">
+import * as THREE from 'three'; import {createPot} from './pots.js';
+const q=new URLSearchParams(location.search), num=(k,d)=>q.has(k)?Number(q.get(k)):d;
+const r=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true}); r.setSize(768,768);r.outputColorSpace=THREE.SRGBColorSpace;document.body.appendChild(r.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0xc8c8c8);scene.add(new THREE.HemisphereLight(0xffffff,0x8a7a66,1.5));const sun=new THREE.DirectionalLight(0xfff3e0,1.6);sun.position.set(2,4,3);scene.add(sun);
+const fullH=num('h',.8), age=num('age',1), potD=num('potD',.3),potH=num('potH',.25),width=q.has('width')?num('width'):undefined,depth=q.has('depth')?num('depth'):undefined;
+const opts={height:fullH*age,spread:num('spread',potD*1.6)*Math.pow(age,.65),potDiameter:potD,seed:num('seed',1),width,depth};
+const pot=createPot({style:q.get('pot')||'dark_plastic',diameter:potD,height:potH,width,depth,seed:opts.seed});scene.add(pot.group);
+const mod=await import('./'+q.get('m'));const plant=mod.createPlant(opts);if(!plant.isGroup)throw Error('Factory must return THREE.Group');plant.position.y=pot.soilY;scene.add(plant);
+let tris=0,draws=0,instances=0,leafInstances=0,finite=true,external=[];const signature=[];
+plant.updateMatrixWorld(true);plant.traverse(o=>{if(o.isMesh){draws++;const g=o.geometry,n=(g.index?g.index.count:g.attributes.position.count)/3;tris+=n*(o.isInstancedMesh?o.count:1);if(o.isInstancedMesh){instances+=o.count;leafInstances+=o.count;}for(const a of Object.values(g.attributes)){for(const v of a.array){if(!Number.isFinite(v))finite=false;}signature.push(Array.from(a.array));}if(o.instanceMatrix)signature.push(Array.from(o.instanceMatrix.array)); signature.push(o.matrixWorld.toArray());for(const m of (Array.isArray(o.material)?o.material:[o.material])){for(const k of ['map','alphaMap','normalMap','roughnessMap']){const src=m[k]?.source?.data?.src;if(src)external.push(src);}}}});
+const box=new THREE.Box3().setFromObject(plant),size=box.getSize(new THREE.Vector3());const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(signature)));const fingerprint=Array.from(new Uint8Array(digest)).map(v=>v.toString(16).padStart(2,'0')).join('');
+// Identical fixture for parent/candidate. Never auto-fit to changed model bounds.
+const frameH=fullH+potH,frameSpread=Math.max(num('spread',potD*1.6),width||0,depth||0,potD),R=Math.max(frameH,frameSpread)*1.20;
+const c=new THREE.Vector3(0,pot.soilY+(fullH-potH)*.44,0),cam=new THREE.PerspectiveCamera(30,1,.01,50),d=R/Math.tan(THREE.MathUtils.degToRad(15))*.59;
+const dir={front:[0,.18,1],three:[.75,.55,.75],side:[1,.18,0],top:[.001,1,.001]}[q.get('view')||'front'];cam.position.copy(c).add(new THREE.Vector3(...dir).normalize().multiplyScalar(d));cam.lookAt(c);r.render(scene,cam);
+window.__stats={tris:Math.round(tris),size:size.toArray(),bounds:{min:box.min.toArray(),max:box.max.toArray()},draws,instances,leafInstances,finite,external,fingerprint,opts,renderer:r.getContext().getParameter(r.getContext().RENDERER)};window.__ready=true;
+</script></body></html>

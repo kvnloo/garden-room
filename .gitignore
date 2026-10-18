@@ -1,0 +1,8 @@
+node_modules/
+.venv/
+data/
+work/
+!work/builders/
+!work/models/
+refs/
+__pycache__/

@@ -1,0 +1,104 @@
+/**
+ * Product bridge — legacy product token names alias foundation `--z-*`.
+ * Import AFTER tokens.css. Changing tokens.json + `npm run build` propagates here
+ * only for foundation vars; this file maps product shorthands → foundation.
+ *
+ * Contract: product CSS may use either --z-* or these aliases; never re-hardcode
+ * easings/durations/semantic colors that already exist on --z-*.
+ */
+
+:root,
+[data-zeros-theme="living-night"] {
+  /* Typography roles */
+  --serif: var(--z-font-editorial);
+  --sans: var(--z-font-operational);
+  --mono: var(--z-font-telemetry);
+
+  /* Text (product --ink* → foundation) */
+  --ink: var(--z-text-primary);
+  --ink-2: var(--z-text-secondary);
+  --ink-3: var(--z-text-tertiary);
+  --ink-4: var(--z-text-faint);
+
+  /* Semantic accents */
+  --gold: var(--z-action);
+  --gold-bright: var(--z-action-strong);
+  --gold-dim: var(--z-action-muted);
+  --green: var(--z-success);
+  --blue: var(--z-information);
+  --amber-warn: var(--z-warning);
+  --danger: var(--z-danger);
+
+  /* Surfaces / chrome */
+  --glass: var(--z-glass);
+  --glass-strong: var(--z-glass-strong);
+  --hair: var(--z-border-subtle);
+  --hair-2: var(--z-border-default);
+  --hair-soft: var(--z-border-quiet);
+  --shadow-soft: var(--z-shadow-context);
+  --shadow-pop: var(--z-shadow-raised);
+  --glass-spec: var(--z-glass-specular);
+  --glass-sheen: var(--z-glass-sheen);
+  --glass-rim: var(--z-glass-rim);
+  --glass-edge: var(--z-glass-edge);
+
+  /* Radii */
+  --r-sm: var(--z-radius-control);
+  --r-md: var(--z-radius-sheet);
+  --r-lg: var(--z-radius-scene);
+  --r-pill: var(--z-radius-pill);
+
+  /* Motion — single ladder */
+  --ease-settle: var(--z-ease-settle);
+  --ease-press: var(--z-ease-press);
+  --ease-sheet: var(--z-ease-sheet);
+  --ease-spring: var(--z-ease-spring);
+  --motion-immediate: var(--z-motion-immediate);
+  --motion-state: var(--z-motion-state);
+  --motion-transition: var(--z-motion-transition);
+  --motion-ambient: var(--z-motion-ambient);
+}
+
+/* Day theme: prefer foundation day-frost when body or data-theme set */
+[data-zeros-theme="day-frost"],
+body.theme-light {
+  --ink: var(--z-text-primary);
+  --ink-2: var(--z-text-secondary);
+  --ink-3: var(--z-text-tertiary);
+  --ink-4: var(--z-text-faint);
+  --gold: var(--z-action);
+  --gold-bright: var(--z-action-strong);
+  --gold-dim: var(--z-action-muted);
+  --green: var(--z-success);
+  --blue: var(--z-information);
+  --amber-warn: var(--z-warning);
+  --glass: var(--z-glass);
+  --glass-strong: var(--z-glass-strong);
+  --hair: var(--z-border-subtle);
+  --hair-2: var(--z-border-default);
+  --hair-soft: var(--z-border-quiet);
+  --shadow-soft: var(--z-shadow-context);
+  --shadow-pop: var(--z-shadow-raised);
+  --glass-spec: var(--z-glass-specular);
+  --glass-sheen: var(--z-glass-sheen);
+  --glass-rim: var(--z-glass-rim);
+  --glass-edge: var(--z-glass-edge);
+}
+
+[data-zeros-theme="proof-mono"] {
+  --ink: var(--z-text-primary);
+  --ink-2: var(--z-text-secondary);
+  --ink-3: var(--z-text-tertiary);
+  --ink-4: var(--z-text-faint);
+  --gold: var(--z-action);
+  --gold-bright: var(--z-action-strong);
+  --gold-dim: var(--z-action-muted);
+  --green: var(--z-success);
+  --blue: var(--z-information);
+  --amber-warn: var(--z-warning);
+  --glass: var(--z-glass);
+  --glass-strong: var(--z-glass-strong);
+  --hair: var(--z-border-subtle);
+  --hair-2: var(--z-border-default);
+  --hair-soft: var(--z-border-quiet);
+}

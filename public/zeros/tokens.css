@@ -1,0 +1,131 @@
+/* Generated from tokens.json. Run `npm run build`; do not edit by hand. */
+
+:root {
+  --z-space-1: 4px;
+  --z-space-2: 8px;
+  --z-space-3: 12px;
+  --z-space-4: 16px;
+  --z-space-6: 24px;
+  --z-space-8: 32px;
+  --z-space-12: 48px;
+  --z-space-16: 64px;
+  --z-radius-control: 6px;
+  --z-radius-card: 8px;
+  --z-radius-sheet: 14px;
+  --z-radius-scene: 18px;
+  --z-radius-pill: 999px;
+  --z-control-min: 44px;
+  --z-motion-immediate: 140ms;
+  --z-motion-state: 240ms;
+  --z-motion-transition: 560ms;
+  --z-motion-ambient: 14s;
+  --z-ease-settle: cubic-bezier(.2,.75,.2,1);
+  --z-ease-press: cubic-bezier(.2,.7,.2,1);
+  --z-ease-sheet: cubic-bezier(.32,.72,0,1);
+  --z-ease-spring: cubic-bezier(.3,.8,.3,1.5);
+  --z-font-editorial: "Cormorant Garamond", Georgia, serif;
+  --z-font-operational: "Hanken Grotesk", system-ui, -apple-system, sans-serif;
+  --z-font-telemetry: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  --z-blur-glass: 20px;
+  --z-blur-raised: 28px;
+}
+
+:root, [data-zeros-theme="living-night"] {
+  --z-canvas: #0c0c0a;
+  --z-canvas-raised: #151611;
+  --z-text-primary: #ECE8DF;
+  --z-text-secondary: #B4AFA3;
+  --z-text-tertiary: #837F74;
+  --z-text-faint: #5e5b52;
+  --z-action: oklch(0.80 0.075 80);
+  --z-action-strong: oklch(0.86 0.09 85);
+  --z-action-muted: oklch(0.62 0.06 80);
+  --z-success: oklch(0.80 0.11 140);
+  --z-information: oklch(0.76 0.075 235);
+  --z-warning: oklch(0.78 0.10 60);
+  --z-danger: oklch(0.70 0.13 35);
+  --z-provenance: oklch(0.72 0.08 305);
+  --z-focus: oklch(0.86 0.09 85);
+  --z-glass: rgba(24,26,23,0.46);
+  --z-glass-strong: rgba(20,22,19,0.66);
+  --z-glass-raised: rgba(18,20,17,0.82);
+  --z-glass-sheen: rgba(255,255,255,0.10);
+  --z-glass-specular: rgba(255,255,255,0.34);
+  --z-glass-rim: rgba(255,255,255,0.30);
+  --z-glass-edge: rgba(0,0,0,0.18);
+  --z-border-subtle: rgba(236,232,223,0.10);
+  --z-border-default: rgba(236,232,223,0.16);
+  --z-border-quiet: rgba(236,232,223,0.06);
+  --z-shadow-context: 0 8px 30px rgba(0,0,0,0.35);
+  --z-shadow-raised: 0 18px 50px rgba(0,0,0,0.50);
+}
+
+[data-zeros-theme="day-frost"], body.theme-light {
+  --z-canvas: #f4f2ea;
+  --z-canvas-raised: #fffefa;
+  --z-text-primary: #20201a;
+  --z-text-secondary: #4a473d;
+  --z-text-tertiary: #66604f;
+  --z-text-faint: #817a67;
+  --z-action: oklch(0.55 0.11 75);
+  --z-action-strong: oklch(0.48 0.12 78);
+  --z-action-muted: oklch(0.46 0.09 72);
+  --z-success: oklch(0.46 0.13 145);
+  --z-information: oklch(0.45 0.12 240);
+  --z-warning: oklch(0.50 0.13 58);
+  --z-danger: oklch(0.48 0.16 30);
+  --z-provenance: oklch(0.46 0.11 305);
+  --z-focus: oklch(0.48 0.12 78);
+  --z-glass: rgba(250,249,243,0.58);
+  --z-glass-strong: rgba(252,251,246,0.76);
+  --z-glass-raised: rgba(255,255,252,0.92);
+  --z-glass-sheen: rgba(255,255,255,0.72);
+  --z-glass-specular: rgba(255,255,255,1);
+  --z-glass-rim: rgba(255,255,255,0.95);
+  --z-glass-edge: rgba(70,60,38,0.12);
+  --z-border-subtle: rgba(40,36,26,0.14);
+  --z-border-default: rgba(40,36,26,0.22);
+  --z-border-quiet: rgba(40,36,26,0.08);
+  --z-shadow-context: 0 8px 30px rgba(60,52,30,0.16);
+  --z-shadow-raised: 0 18px 50px rgba(60,52,30,0.22);
+}
+
+[data-zeros-theme="proof-mono"] {
+  --z-canvas: #050505;
+  --z-canvas-raised: #111111;
+  --z-text-primary: #f0f0ed;
+  --z-text-secondary: #c4c4c0;
+  --z-text-tertiary: #92928d;
+  --z-text-faint: #74746f;
+  --z-action: #f0f0ed;
+  --z-action-strong: #ffffff;
+  --z-action-muted: #b0b0ac;
+  --z-success: #f0f0ed;
+  --z-information: #d8d8d4;
+  --z-warning: #c2c2bd;
+  --z-danger: #ffffff;
+  --z-provenance: #a6a6a1;
+  --z-focus: #ffffff;
+  --z-glass: rgba(20,20,20,0.58);
+  --z-glass-strong: rgba(14,14,14,0.76);
+  --z-glass-raised: rgba(10,10,10,0.90);
+  --z-glass-sheen: rgba(255,255,255,0.08);
+  --z-glass-specular: rgba(255,255,255,0.30);
+  --z-glass-rim: rgba(255,255,255,0.26);
+  --z-glass-edge: rgba(0,0,0,0.28);
+  --z-border-subtle: rgba(255,255,255,0.12);
+  --z-border-default: rgba(255,255,255,0.20);
+  --z-border-quiet: rgba(255,255,255,0.07);
+  --z-shadow-context: 0 8px 30px rgba(0,0,0,0.42);
+  --z-shadow-raised: 0 18px 50px rgba(0,0,0,0.62);
+}
+
+[data-zeros-lens="garden"] {
+  --z-context-accent: oklch(0.80 0.11 140);
+  --z-context-wash: rgba(82,128,72,0.12);
+}
+
+[data-zeros-lens="research"] {
+  --z-context-accent: oklch(0.76 0.075 235);
+  --z-context-wash: rgba(70,108,142,0.12);
+}

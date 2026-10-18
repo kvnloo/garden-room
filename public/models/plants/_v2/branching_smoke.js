@@ -1,0 +1,2 @@
+import * as THREE from 'three';import {makeBranching} from '/models/plants/_shared/branching.js';
+export function createPlant({height=.8,seed=1}={}){const g=new THREE.Group();const result=makeBranching({seed,lengths:[height*.5,height*.3,height*.15,.04],children:[4,2,0]});g.add(new THREE.Mesh(result.geometry,new THREE.MeshStandardMaterial({color:0x617542})));g.userData.sites=result.sites.length;return g;}

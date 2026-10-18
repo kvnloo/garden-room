@@ -1,0 +1,17 @@
+{
+  "repo": "https://github.com/dgreenheck/ez-tree",
+  "sha": "dcf309bd86bd521083d9c70f01f2de45fdc7c457",
+  "changes": [
+    "explicit .js relative import extensions",
+    "removed JSON preset loader; caller supplies options"
+  ],
+  "files": {
+    "tree.js": "376cfe493e08612c99bda91078815045c55e41dfd5aca9bf5264b883ba29e488",
+    "branch.js": "7f8091cc3c339a69edec4f704b111fc9b33b683157ef99d900d1cb219132b1cd",
+    "rng.js": "aeb117a63539b1de3ccdf708cc1a76721a015e8a416e8c24066405ae434e1954",
+    "options.js": "b2fa7d50b44fa049fabc156fc4292c1c2aea3aadbfdd0e3b755c2b73333f4c65",
+    "enums.js": "2c006ffaed405278836a93ff3360b7364233ed33c82c55c244dede65c3104e10",
+    "trellis.js": "21fccf0fa89b46d212bde4ef4769b40f607b276589305889034aa223a2160a95",
+    "LICENSE": "20e4afadfb10c67952b3d73cd2982d21d165ab4ae82b0dd9e4d6f2166ee349b6"
+  }
+}
