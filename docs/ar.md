@@ -1,6 +1,6 @@
 # About camera-based room measurement
 
-Garden Room uses the existing MIT-licensed three.js 0.186 dependency with the browser's WebXR API. The session requires `immersive-ar`, `hit-test`, and `dom-overlay`. Anchors, CPU depth, and `local-floor` are optional. The renderer uses `local` space, so it does not require the runtime to estimate the floor origin.
+Garden Room uses the existing MIT-licensed three.js 0.186 dependency with the browser's WebXR API. The session requires `immersive-ar`, `hit-test`, and `dom-overlay`. Anchors, CPU depth, `local-floor`, raw `camera-access`, and `plane-detection` are optional. The new live-scanning pipeline is documented in [scan-live.md](scan-live.md), including measured GPU evidence and its remaining phone/quality limits. The renderer uses `local` space, so it does not require the runtime to estimate the floor origin.
 
 This follows the [three.js hit-test example](https://threejs.org/examples/webxr_ar_hittest.html) and the [Immersive Web hit-test and anchor samples](https://immersive-web.github.io/webxr-samples/). No new framework, remote JavaScript, paid service, or native app is involved.
 
@@ -16,7 +16,7 @@ The [2026 anchors draft](https://immersive-web.github.io/anchors/) describes per
 
 ## How room alignment works
 
-The owner chooses two numbered corners on the mini plan. The plan marks the window, fridge, and item footprints. The owner aims the centre reticle at each physical floor corner and taps **Place point**.
+Live Scan can fit distinctive floor/wall geometry or two known furniture landmarks continuously; ambiguous fits are rejected and manual anchors remain authoritative. This automatic path needs actual posed frames/depth, not orientation-only video. As the manual fallback, the owner chooses two numbered corners on the mini plan. The plan marks the window, fridge, and item footprints. The owner aims the centre reticle at each physical floor corner and taps **Place point**.
 
 `ar-core.js` fits a rigid rotation and translation in the horizontal plane. It never rescales AR metres. It rejects duplicate corners, non-level floor points, and distances that disagree by more than the larger of 12 cm or 8 percent. The first point fixes translation. The direction between points fixes heading. An optional pair of anchors updates the transform as tracking improves.
 

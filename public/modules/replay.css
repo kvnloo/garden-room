@@ -1,0 +1,1 @@
+#replayRec{position:fixed;z-index:35;top:calc(env(safe-area-inset-top,0px) + 68px);right:10px;border:1px solid #ffffff22;border-radius:14px;padding:5px 9px;background:#1519158c;backdrop-filter:blur(16px);color:#f5aaa0;font:10px/1.3 monospace;letter-spacing:.07em;touch-action:manipulation}#replayRec[data-paused=true]{color:#c8c8bd}#replayRec[data-offline=true]{color:#e8c36e}

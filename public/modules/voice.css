@@ -1,4 +1,12 @@
 /* Voice owns its HUD rail and panel, not the room canvas. */
+.voice-control { display: flex; flex-direction: column; align-items: center; gap: 5px; pointer-events: auto; }
+.voice-badge { max-width: 126px; padding: 3px 7px; border-radius: 12px; background: #141710e8; color: #f5db9f; font: 10px/1.35 var(--mono, monospace); text-align: center; overflow-wrap: anywhere; }
+.voice-control.in-overlay { position: fixed; right: 24px; top: calc(env(safe-area-inset-top) + var(--voice-overlay-top, 194px)); bottom: auto; z-index: 10020; }
+.voice-control.in-overlay .voice-badge { max-width: 118px; }
+#voiceMic[data-state=error] { outline: 2px solid #ef987a; outline-offset: 3px; }
+#voiceCaption { z-index: 10021; }
+#voiceCaption.in-overlay { position: fixed; top: calc(env(safe-area-inset-top) + var(--voice-overlay-caption-top, 266px)); left: 16px; transform: none; max-width: calc(100% - 32px); max-height: 64px; }
+
 #hud.has-voice { grid-template-columns: auto 1fr; align-items: start; }
 #hud.has-voice #mode { justify-self: end; margin-top: 3px; }
 #hud.has-voice .hud-right { position: absolute; right: 10px; top: calc(env(safe-area-inset-top) + 112px); flex-direction: column; gap: 10px; align-items: center; }

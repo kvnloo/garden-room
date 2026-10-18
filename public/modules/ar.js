@@ -8,9 +8,11 @@ export function init(GR) {
     <header class="lg ar-head"><div><span class="micro" id="ar-mode">CAMERA TOOLS</span><h3>Room <em>in reality</em></h3></div><button class="btn" id="ar-close" aria-label="Close AR">Close</button></header>
     <div class="ar-top"><canvas id="ar-map" class="lg" width="360" height="270" aria-label="Room corners and live position"></canvas><div class="lg ar-readout"><span id="ar-tracking">Not tracking</span><b id="ar-live">Aim at a surface</b></div></div>
     <div id="ar-cross" hidden>＋</div>
-    <div class="ar-bottom lg"><div class="row ar-tabs" role="tablist" aria-label="AR tool"><button class="btn" data-tool="orient" role="tab">Orient</button><button class="btn" data-tool="measure" role="tab">Measure</button><button class="btn" data-tool="ruler" role="tab">Ruler</button></div>
+    <div class="ar-bottom lg"><div class="row ar-tabs" role="tablist" aria-label="AR tool"><button class="btn" data-tool="scan" role="tab">Scan</button><button class="btn" data-tool="orient" role="tab">Orient</button><button class="btn" data-tool="measure" role="tab">Measure</button><button class="btn" data-tool="ruler" role="tab">Ruler</button></div>
       <p id="ar-instruction" class="sub" role="status" aria-live="polite"></p>
       <div class="row ar-start"><button class="btn gold" id="ar-start">Start camera AR</button><button class="btn" id="ar-photo-mode">Photo ruler</button></div>
+      <div id="ar-scan" hidden></div>
+      <div id="ar-voice" aria-label="Talk while scanning"></div>
       <div id="ar-orient"><div class="row"><label for="ar-corner-a" class="micro">First corner</label><select id="ar-corner-a"></select></div><div class="row"><label for="ar-corner-b" class="micro">Second corner</label><select id="ar-corner-b"></select></div><div class="row"><button class="btn" id="ar-recalibrate">Retap corners</button><label><input id="ar-footprints" type="checkbox"> Floor footprints</label></div><div class="row"><label><input id="ar-correct" type="checkbox"> Drag items on mini plan to correct</label></div></div>
       <div id="ar-measure" hidden><label class="micro" for="ar-item">Assign to real object</label><select id="ar-item"></select><div id="ar-dimensions" class="row"></div><p class="sub" id="ar-values">No dimensions yet</p><button class="btn gold" id="ar-apply" disabled>Apply to item</button></div>
       <div id="ar-ruler" hidden><div id="ar-segments"></div><div class="row"><button class="btn" id="ar-undo">Undo</button><button class="btn" id="ar-clear">Clear</button></div></div>
@@ -29,6 +31,7 @@ export function init(GR) {
   let anchors = [null, null], anchorPoints = [null, null], anchorHandles = [null, null], anchorPending = [false, false];
   let ruler = [], posePlan = null, lastPosePlan = null, lastMap = 0, mapBounds = null, photo = null, refPoints = [], photoPoints = [], scale = null, drag = null;
   let measurementLabels = [], lastDepth = null, xrGeneration = 0, anchorEpoch = 0, retryMinimal = false;
+  let alignmentMode = null; const xrHooks = new Set(), lifecycleHooks = new Set();
   const footprint = (it) => { const f = GR.footprint(it); return [[f.x0, f.z0], [f.x1, f.z0], [f.x1, f.z1], [f.x0, f.z1]]; };
   const planSignature = () => JSON.stringify(GR.state.room.poly);
   const safeLocal = () => { try { return JSON.parse(localStorage.getItem(KEY)); } catch { return null; } };
@@ -60,15 +63,20 @@ export function init(GR) {
     dimension = dims()[0][0]; updateDimensions(); drawMap();
   }
   function updateInstruction() {
+    if (medium === 'video') { notice('2D camera recognition only. Device orientation has no metric translation; use camera AR and multiple viewpoints for layout alignment.'); return; }
     if (medium === 'photo') { notice(tool === 'orient' ? 'Photo mode cannot locate you in the room. Start AR to orient.' : !photo ? 'Take a photo with a card or a known width beside the object.' : !scale ? 'Tap the two ends of the known reference on the photo.' : tool === 'measure' ? `Tap both ends of ${dims().find(([k]) => k === dimension)?.[1].toLowerCase()}.` : 'Tap a polyline on the photo. Distances assume a flat, coplanar surface.'); return; }
+    if (tool === 'scan' && !session) { notice(supported === false ? 'Begin live scan, then choose the 2D camera fallback. Metric room alignment needs immersive AR with raw camera access.' : 'Begin live scan to detect furniture and fit the room. Camera permission starts only from your tap.'); return; }
     if (!session) { notice(supported === false ? 'Immersive AR is unavailable here. Use the photo ruler, or Chrome with ARCore on your phone.' : retryMinimal ? 'Optional depth setup failed. Tap Start again to try without depth.' : 'Use Chrome on your ARCore phone. Camera access starts only when you tap Start.'); return; }
+    if (tool === 'scan') { notice(calibration ? 'Room aligned · scan slowly sideways. Detections refine the live map; changes require Apply.' : 'Scan floor and furniture from several angles. Automatic alignment needs distinctive walls or two known objects; Orient offers a two-corner fallback.'); return; }
     if (tool === 'orient') notice(calibration ? 'Aligned. Gold dot is your live position. Check the overlay against the room; retap if it drifts.' : `Aim the centre reticle at floor corner ${+$(corners.length ? '#ar-corner-b' : '#ar-corner-a').value + 1}, then Place. Choose numbered corners on the plan.`);
     else if (tool === 'measure') notice(isVertical() ? first ? 'Aim up along the gold vertical guide to the top; stay side-on. Place to finish.' : `Aim at the ${dimension === 'height' ? 'pot rim (foliage base)' : 'base'}, Place, then raise the centre aim to the top.` : 'Aim at one edge, Place, then the other edge. Width and depth are horizontal.');
     else notice('Aim the centre reticle, then Place each point. Move slowly to scan textured surfaces.');
   }
   function setTool(next) {
-    tool = next; first = null; photoPoints = []; queued = false;
-    for (const name of ['orient', 'measure', 'ruler']) $(`#ar-${name}`).hidden = name !== tool;
+    tool = next; root.dataset.tool = next; first = null; photoPoints = []; queued = false;
+    if (next === 'scan' && !session && medium !== 'video') { medium = 'ready'; root.dataset.medium = medium; photoCanvas.hidden = true; $('#ar-photo').hidden = true; $('#ar-mode').textContent = 'LIVE SCAN · READY'; $('#ar-tracking').textContent = 'Camera not started'; $('#ar-live').textContent = 'Pose required for 3D'; }
+    $('.ar-start').hidden = next === 'scan' || !!session; $('#ar-place').hidden = next === 'scan' || medium === 'photo';
+    for (const name of ['scan', 'orient', 'measure', 'ruler']) $(`#ar-${name}`).hidden = name !== tool;
     $$('[data-tool]').forEach((b) => { b.classList.toggle('on', b.dataset.tool === tool); b.setAttribute('aria-selected', String(b.dataset.tool === tool)); });
     updateDimensions(); updateInstruction(); redrawLines(); drawPhoto();
   }
@@ -86,7 +94,7 @@ export function init(GR) {
     try { localStorage.setItem(KEY, JSON.stringify(record)); } catch { GR.toast('Could not save calibration on this device'); }
     GR.api('/api/ar/calib', { method: 'POST', body: JSON.stringify(record) }).then((r) => { if (!r.ok) throw new Error('Save rejected'); return GR.api('/api/ar/calib'); }).then((r) => { if (r.savedAt !== record.savedAt) throw new Error('Save not confirmed'); }).catch(() => GR.toast('Calibration is local only; server save failed'));
   }
-  function invalidate() { calibration = null; corners = []; posePlan = null; first = null; latest = null; target = null; queued = false; anchorPoints = [null, null]; anchorPending = [false, false]; marker.visible = false; $('#ar-place').disabled = true; if (footprintGroup) footprintGroup.visible = false; drawMap(); updateInstruction(); }
+  function invalidate() { calibration = null; alignmentMode = null; corners = []; posePlan = null; first = null; latest = null; target = null; queued = false; anchorPoints = [null, null]; anchorPending = [false, false]; marker.visible = false; $('#ar-place').disabled = true; if (footprintGroup) footprintGroup.visible = false; drawMap(); updateInstruction(); }
   function releaseAnchors(removePersistent = false) {
     ++anchorEpoch;
     anchors.forEach((a) => { try { a?.delete(); } catch {} }); anchors = [null, null];
@@ -109,7 +117,9 @@ export function init(GR) {
   function clearGroup(group) { if (!group) return; while (group.children.length) { const c = group.children[0]; group.remove(c); c.geometry?.dispose(); c.material?.dispose(); } }
   function line(points, group, color = 0xf4d48b) { const l = new T.Line(new T.BufferGeometry().setFromPoints(points.map((p) => new T.Vector3(p.x, p.y, p.z))), new T.LineBasicMaterial({ color, depthTest: false })); group.add(l); return l; }
   async function start() {
-    if (session || !supported) return;
+    if (session) return true;
+    if (supported === false || !navigator.xr) return false;
+    root.hidden = false; GR.closeSheet(); if (!$('#ar-corner-a').options.length) populate();
     $('#ar-start').disabled = true;
     let starting = null;
     try {
@@ -123,16 +133,16 @@ export function init(GR) {
       makeRenderer();
       await xrRenderer.xr.setSession(session);
       space = xrRenderer.xr.getReferenceSpace();
-      space.addEventListener('reset', () => { recalibrate(); notice('Tracking origin changed. Retap both room corners.'); });
+      space.addEventListener('reset', () => { recalibrate(); lifecycleHooks.forEach((fn) => fn('reset')); notice('Tracking origin changed. Rescan to align automatically, or retap both corners.'); });
       const viewer = await session.requestReferenceSpace('viewer');
-      source = await session.requestHitTestSource({ space: viewer });
+      source = await session.requestHitTestSource({ space: viewer, entityTypes: ['plane'] });
       if (!session.domOverlayState) throw new Error('This browser did not grant the required controls overlay.');
       $('#ar-mode').textContent = 'LIVE AR · WEBXR'; $('.ar-start').hidden = true; $('#ar-end').hidden = false; $('#ar-cross').hidden = false; $('#ar-place').hidden = false;
-      xrRenderer.setAnimationLoop(onXRFrame); await restoreAnchors(); redrawLines(); updateInstruction();
+      xrRenderer.setAnimationLoop(onXRFrame); lifecycleHooks.forEach((fn) => fn('start')); mountVoice(); await restoreAnchors(); redrawLines(); updateInstruction();
     } catch (e) {
       if (starting) { try { await starting.end(); } catch {} }
       if (session) endCleanup();
-      retryMinimal = true; notice(`AR did not start: ${e.message}. Tap Start to retry without depth, or use Photo ruler.`);
+      retryMinimal = true; notice(`AR did not start: ${e.message}. Tap Start to retry without optional camera/depth, or use the 2D camera scan / Photo ruler.`);
     } finally { $('#ar-start').disabled = !supported; }
   }
   async function restoreAnchors() {
@@ -148,10 +158,10 @@ export function init(GR) {
     } catch { releaseAnchors(); invalidate(); }
   }
   function endCleanup() {
-    ++xrGeneration; source?.cancel(); source = null; session = null; space = null; xrRenderer?.setAnimationLoop(null); releaseAnchors(); invalidate(); ruler = []; first = null;
+    ++xrGeneration; lifecycleHooks.forEach((fn) => fn('end')); source?.cancel(); source = null; session = null; space = null; xrRenderer?.setAnimationLoop(null); releaseAnchors(); invalidate(); ruler = []; first = null;
     clearGroup(lineGroup); clearGroup(footprintGroup); $('#ar-labels').replaceChildren();
     if (reticle) reticle.visible = false; if (liveLine) liveLine.visible = false; if (guide) guide.visible = false;
-    medium = 'ready'; root.dataset.medium = medium; $('#ar-mode').textContent = 'CAMERA TOOLS'; $('.ar-start').hidden = false; $('#ar-end').hidden = true; $('#ar-cross').hidden = true;
+    medium = 'ready'; root.dataset.medium = medium; $('#ar-mode').textContent = 'CAMERA TOOLS'; $('.ar-start').hidden = tool === 'scan'; $('#ar-end').hidden = true; $('#ar-cross').hidden = true;
     $('#ar-tracking').textContent = 'Not tracking'; $('#ar-live').textContent = 'Aim at a surface'; updateInstruction();
   }
   function captureAnchor(index, sample) {
@@ -166,7 +176,7 @@ export function init(GR) {
     }).catch(() => {}).finally(() => { if (gen === xrGeneration) anchorPending[index] = false; });
   }
   function place(sample) {
-    if (!target || !sample.tracked) return;
+    if (tool === 'scan' || !target || !sample.tracked) return;
     const point = { ...target };
     if (tool === 'orient') {
       if (!sample.floorHit) { notice('Aim down at a horizontal floor, not a wall.'); return; }
@@ -176,7 +186,7 @@ export function init(GR) {
       else {
         try { calibration = calibrate(corners[0], point, GR.state.room.poly[+$('#ar-corner-a').value], GR.state.room.poly[+$('#ar-corner-b').value]); }
         catch (e) { notice(e.message); return; }
-        corners.push(point); captureAnchor(1, sample); storeCalibration(); drawFootprints();
+        corners.push(point); alignmentMode = 'manual'; captureAnchor(1, sample); storeCalibration(); drawFootprints();
       }
       updateInstruction(); drawMap();
     } else if (tool === 'ruler') { ruler.push(point); redrawLines(); }
@@ -197,7 +207,7 @@ export function init(GR) {
       anchors.forEach((a, i) => { if (!a) return; const p = frame.getPose(a.anchorSpace, space); if (p) anchorPoints[i] = { x: p.transform.position.x, y: p.transform.position.y, z: p.transform.position.z }; else { anchorPoints[i] = null; located = false; } });
       if (allAnchors && located && anchorPoints.every(Boolean)) {
         const wasAligned = !!calibration;
-        try { calibration = calibrate(anchorPoints[0], anchorPoints[1], GR.state.room.poly[+$('#ar-corner-a').value], GR.state.room.poly[+$('#ar-corner-b').value]); if (!wasAligned) updateInstruction(); }
+        try { alignmentMode = 'manual-anchors'; calibration = calibrate(anchorPoints[0], anchorPoints[1], GR.state.room.poly[+$('#ar-corner-a').value], GR.state.room.poly[+$('#ar-corner-b').value]); if (!wasAligned) updateInstruction(); }
         catch { calibration = null; }
       }
       // Never show localized overlays when an existing anchor temporarily loses tracking.
@@ -236,7 +246,9 @@ export function init(GR) {
       lastMap = time; drawMap(); $('#ar-live').textContent = previous && target ? units(tool === 'measure' ? isVertical() ? Math.abs(target.y - previous.y) : Math.hypot(target.x - previous.x, target.z - previous.z) : distance(previous, target)) : target ? 'Surface found · Place' : 'Scan / aim at a surface';
     }
     if (queued) { queued = false; place(sample); }
-    footprintGroup.visible = floorOverlay && !!posePlan; projectLabels(); xrRenderer.render(xrScene, xrCamera);
+    footprintGroup.visible = floorOverlay && !!posePlan; projectLabels();
+    xrHooks.forEach((fn) => { try { fn({ time, frame, session, renderer: xrRenderer, scene: xrScene, space, sample, calibration, posePlan }); } catch (e) { console.warn('AR scan frame', e.message); } });
+    xrRenderer.render(xrScene, xrCamera);
   }
   function redrawLines() {
     if (lineGroup) {
@@ -271,6 +283,7 @@ export function init(GR) {
     mc.clearRect(0, 0, 360, 270); mc.lineWidth = 2; mc.strokeStyle = '#d9b673'; mc.fillStyle = '#d9b6730d'; mc.beginPath(); poly.forEach(([x, z], i) => { const p = point(x, z); i ? mc.lineTo(...p) : mc.moveTo(...p); }); mc.closePath(); mc.fill(); mc.stroke();
     for (const it of GR.state.items) { const fp = footprint(it); mc.strokeStyle = it.id === selected ? '#ffe2a0' : '#827d6c'; mc.lineWidth = it.id === selected ? 2 : 1; mc.beginPath(); fp.forEach(([x, z], i) => { const p = point(x, z); i ? mc.lineTo(...p) : mc.moveTo(...p); }); mc.closePath(); mc.stroke(); }
     poly.forEach(([x, z], i) => { const p = point(x, z); const active = i === +$('#ar-corner-a').value || i === +$('#ar-corner-b').value; mc.fillStyle = active ? '#f4d48b' : '#7e7c70'; mc.beginPath(); mc.arc(...p, 10, 0, Math.PI * 2); mc.fill(); mc.fillStyle = '#14140e'; mc.font = 'bold 13px sans-serif'; mc.textAlign = 'center'; mc.textBaseline = 'middle'; mc.fillText(String(i + 1), ...p); });
+    for (const d of GR.scanLive?.detections() || []) { const p = d.planPosition; if (!p || !posePlan || !session) continue; const [x, z] = point(p.x, p.z); mc.fillStyle = '#a0e7ba'; mc.beginPath(); mc.arc(x, z, 4, 0, Math.PI * 2); mc.fill(); mc.font = '9px sans-serif'; mc.fillText(d.label, x + 5, z - 4); }
     const fridge = GR.state.items.find((it) => it.kind === 'fridge' || /fridge/i.test(it.name));
     mc.fillStyle = '#aaa391'; mc.font = '11px sans-serif'; mc.textAlign = 'left'; if (fridge) { const p = point(fridge.x, fridge.z); mc.fillText('fridge', p[0] + 4, p[1] + 4); }
     const w = GR.state.room.window;
@@ -347,7 +360,7 @@ export function init(GR) {
   $('#ar-start').onclick = start; $('#ar-photo-mode').onclick = setPhoto;
   $('#ar-place').onclick = () => { queued = true; };
   $('#ar-end').onclick = () => session?.end().catch(() => endCleanup());
-  $('#ar-close').onclick = async () => { if (session) { try { await session.end(); } catch { endCleanup(); } } root.hidden = true; };
+  $('#ar-close').onclick = async () => { GR.scanLive?.stop(); if (session) { try { await session.end(); } catch { endCleanup(); } } root.hidden = true; GR.voice?.mountInto?.(null); delete $('#ar-voice').dataset.mounted; };
   $('#ar-recalibrate').onclick = recalibrate;
   for (const id of ['#ar-corner-a', '#ar-corner-b']) $(id).onchange = recalibrate;
   $('#ar-footprints').onchange = () => { floorOverlay = $('#ar-footprints').checked; drawFootprints(); };
@@ -356,6 +369,26 @@ export function init(GR) {
   $$('[data-tool]').forEach((b) => b.onclick = () => setTool(b.dataset.tool));
   root.addEventListener('beforexrselect', (e) => e.preventDefault()); // UI never generates a second XR select.
   window.addEventListener('resize', () => { if (xrRenderer && !session) xrRenderer.setSize(innerWidth, innerHeight); });
-  GR.addDock({ key: 'ar', label: 'AR', icon: GR.ICON.scan, open: () => open() });
+  function mountVoice() { const host = $('#ar-voice'); if (GR.voice?.mountInto && !host.dataset.mounted) { GR.voice.mountInto(host); host.dataset.mounted = '1'; } }
+  GR.onFrame(() => { if (!root.hidden) mountVoice(); });
+  GR.ar = {
+    open, start, stop: () => session ? session.end() : GR.scanLive?.stop(), setTool, recalibrate,
+    measure: async (id) => { await open(id); setTool('measure'); return true; },
+    ruler: async () => { await open(); setTool('ruler'); return true; },
+    place: () => { if (!session || !latest?.tracked || !target || tool === 'scan') return false; queued = true; return true; },
+    status: () => ({ active: !!session, supported, tracking: !!latest?.tracked, aligned: !!calibration, alignmentMode, calibration: calibration && { ...calibration }, cameraAccess: !!session?.enabledFeatures?.includes('camera-access') }),
+    setVideoMode(active) { medium = active ? 'video' : 'ready'; root.dataset.medium = medium; photoCanvas.hidden = true; $('#ar-photo').hidden = true; $('#ar-mode').textContent = active ? 'LIVE CAMERA · 2D ONLY' : 'CAMERA TOOLS'; updateInstruction(); },
+    onXRFrame(fn) { xrHooks.add(fn); return () => xrHooks.delete(fn); },
+    onLifecycle(fn) { lifecycleHooks.add(fn); return () => lifecycleHooks.delete(fn); },
+    setAlignment(t) {
+      if (!session || !latest?.tracked || anchors.some(Boolean) || corners.length) return false;
+      if (!['angle', 'tx', 'tz', 'floor'].every((k) => Number.isFinite(t?.[k])) || (t.error || 0) > .35) return false;
+      if (calibration) { const delta = Math.atan2(Math.sin(t.angle - calibration.angle), Math.cos(t.angle - calibration.angle)); if (Math.abs(delta) > .3 || Math.hypot(t.tx - calibration.tx, t.tz - calibration.tz) > .7) return false; calibration = { ...t, angle: calibration.angle + delta * .2, tx: calibration.tx * .8 + t.tx * .2, tz: calibration.tz * .8 + t.tz * .2, floor: calibration.floor * .8 + t.floor * .2 }; }
+      else calibration = { ...t };
+      alignmentMode = 'automatic'; drawFootprints(); updateInstruction(); return true;
+    },
+    toPlan: (p) => calibration ? toPlan(calibration, p) : null, toXR: (p) => calibration ? toXR(calibration, p) : null,
+  };
+  (GR.addHubItem || GR.addDock).call(GR, { key: 'ar', label: 'AR tools', icon: GR.ICON.scan, open: () => open() });
   GR.addItemAction({ label: 'Measure in AR', icon: GR.ICON.scan, run: (it) => open(it.id) });
 }

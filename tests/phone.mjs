@@ -18,6 +18,8 @@ const results = {};
 // isolate from the owner's saved layout: start from photo defaults, never write back
 await page.route('**/api/state', (r) => r.request().method() === 'GET' ? r.fulfill({ json: {} }) : r.fulfill({ json: { ok: true } }));
 await page.route('**/api/layouts', (r) => r.request().method() === 'GET' ? r.fulfill({ json: [] }) : r.fulfill({ json: { ok: true } }));
+// Replay is tested by its own suite; do not record synthetic phone gestures into owner history.
+await page.route('**/api/replay/batch', (r) => r.fulfill({ json: { ok: true } }));
 // Zen's onboarding also persists; keep smoke runs out of the owner's care journal.
 let zenProgress = { v: 1, revision: 0 };
 await page.route('**/api/zen/progress', (r) => {
@@ -64,7 +66,7 @@ await page.evaluate(() => __garden.setMode('explore')); await page.waitForTimeou
 await page.screenshot({ path: out + '02b-explore.png' });
 await page.evaluate(() => __garden.setMode('edit'));
 // put a plant in front of the fridge: the app must flag the door
-await page.evaluate(() => { const it = __garden.state.items.find((i) => i.id === 'p02'); it.x = 0.65; it.z = 1.3; __garden.rescore(); });
+await page.evaluate(() => { const it = __garden.state.items.find((i) => i.id === 'p02'), f = GR.itemById('fridge'); it.x = f.x - f.w / 2 - .3; it.z = f.z; __garden.rescore(); });
 const blocked = await page.evaluate(() => document.querySelector('#warn').textContent);
 ok('flags plant blocking fridge door', /fridge door/.test(blocked), blocked);
 const s0b = await page.evaluate(() => +document.querySelector('#score').textContent);
@@ -92,7 +94,7 @@ await page.fill('input[data-k=potD]', '18'); await page.dispatchEvent('input[dat
 const potD = await page.evaluate(() => __garden.state.items.find((i) => i.id === 'p02').potD / 0.0254);
 ok('edit pot diameter (in)', Math.abs(potD - 18) < 0.01, String(potD));
 await page.screenshot({ path: out + '06-item-sheet.png' });
-for (const p of ['layouts', 'scan', 'chat']) { await page.tap(`[data-panel=${p}]`); await page.waitForTimeout(900); await page.screenshot({ path: out + `07-${p}.png` }); }
+for (const p of ['layouts', 'scan', 'chat']) { await page.evaluate((key) => GR.openPanel(key), p); await page.waitForTimeout(900); await page.screenshot({ path: out + `07-${p}.png` }); }
 ok('no console errors', errors.length === 0, errors.slice(0, 5).join(' | '));
 ok('no failed requests', failed.length === 0, failed.slice(0, 5).join(' | '));
 console.log(JSON.stringify(results, null, 1));

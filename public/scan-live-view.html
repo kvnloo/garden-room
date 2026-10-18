@@ -1,0 +1,23 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Garden Room · live scan splat</title><style>body{margin:0;background:#0b100d;color:#d2e8d9;font:14px system-ui}canvas{display:block;touch-action:none}#bar{position:fixed;top:0;left:0;right:0;padding:12px;z-index:2;background:#101910d9;display:flex;gap:10px;align-items:center}a,button{color:inherit;background:#253328;border:1px solid #6e8c73;padding:9px;border-radius:10px}#state{font-size:12px}</style><script type="importmap">{"imports":{"three":"/vendor/three/build/three.module.js","three/addons/":"/vendor/three/examples/jsm/","@sparkjsdev/spark":"/vendor/spark/dist/spark.module.min.js"}}</script><div id="bar"><a href="/">← Room</a><button id="refresh">Refresh</button><label><input id="live" type="checkbox" checked> Live</label><span id="state" role="status">Loading private scan…</span></div><script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
+const id=new URLSearchParams(location.search).get('s'), key=localStorage.getItem('gr_key')||'', state=document.querySelector('#state');
+const renderer=new THREE.WebGLRenderer({antialias:false}); renderer.setPixelRatio(Math.min(devicePixelRatio,1.5)); document.body.append(renderer.domElement);
+const scene=new THREE.Scene(); scene.add(new SparkRenderer({renderer})); const camera=new THREE.PerspectiveCamera(65,1,.01,100); const controls=new OrbitControls(camera,renderer.domElement); controls.enableDamping=true;
+let mesh=null, revision=-1, busy=false, first=true;
+function resize(){renderer.setSize(innerWidth,innerHeight); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();} addEventListener('resize',resize); resize();
+async function refresh(){
+ if(busy)return; busy=true;
+ try{
+  if(!/^[0-9a-f]{24}$/.test(id||''))throw new Error('Invalid scan id');
+  const status=await fetch(`/api/scan_live/${id}/status`,{headers:{'X-Garden-Key':key}}); if(!status.ok)throw new Error('Private scan unavailable; open the Room with your key first'); const data=await status.json();
+  if(revision===data.splat?.revision)return;
+  const response=await fetch(`/api/scan_live/${id}/splat`,{headers:{'X-Garden-Key':key}}); if(!response.ok)throw new Error('Waiting for depth or translated camera views'); const bytes=await response.arrayBuffer();
+  const next=new SplatMesh({fileBytes:bytes,fileType:'splat',fileName:'live.splat'}); await next.initialized;
+  if(first){const box=new THREE.Box3(); next.forEachSplat?.((_i,p)=>box.expandByPoint(p)); if(box.isEmpty())next.splats?.forEachSplat((_i,p)=>box.expandByPoint(p)); const center=box.isEmpty()?new THREE.Vector3(0,0,-2):box.getCenter(new THREE.Vector3()); const radius=box.isEmpty()?3:Math.min(8,Math.max(1,box.getSize(new THREE.Vector3()).length()*.65)); controls.target.copy(center); camera.position.copy(center).add(new THREE.Vector3(0,radius*.25,radius)); first=false;}
+  if(mesh){scene.remove(mesh);mesh.dispose();} mesh=next;scene.add(mesh);revision=data.splat?.revision; window.scanViewer={count:bytes.byteLength/32,revision,metric:data.metric}; state.textContent=`${bytes.byteLength/32} Gaussians · ${data.metric?'XR metre space':'COLMAP estimate · scale unknown'} · drag / pinch`;
+ }catch(e){state.textContent=e.message;}finally{busy=false;}
+}
+document.querySelector('#refresh').onclick=refresh; setInterval(()=>{if(document.querySelector('#live').checked&&!document.hidden)refresh();},3000); refresh(); renderer.setAnimationLoop(()=>{controls.update(); renderer.render(scene,camera);});
+</script></html>

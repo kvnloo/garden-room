@@ -61,6 +61,6 @@ export function sampleFrame(frame, space, source) {
     floorHit: !!hitPose && Math.abs(hitPose.transform.matrix[5]) > 0.9 && hitPose.transform.position.y < origin.y - 0.1 };
 }
 export function sessionOptions(root, extras = true) {
-  return { requiredFeatures: ['hit-test', 'dom-overlay'], optionalFeatures: extras ? ['anchors', 'depth-sensing', 'local-floor'] : ['anchors', 'local-floor'],
+  return { requiredFeatures: ['hit-test', 'dom-overlay'], optionalFeatures: extras ? ['anchors', 'depth-sensing', 'local-floor', 'camera-access', 'plane-detection'] : ['anchors', 'local-floor'],
     domOverlay: { root }, ...(extras ? { depthSensing: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['float32', 'luminance-alpha'] } } : {}) };
 }

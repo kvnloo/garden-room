@@ -50,6 +50,28 @@ class VoiceTests(unittest.TestCase):
         inbox = [json.loads(s) for s in (voice.DATA/'inbox.jsonl').read_text().splitlines()]
         self.assertEqual([row['kind'] for row in inbox],['complaint','request','praise'])
         self.assertEqual(set(inbox[0]),{'ts','kind','text','context'})
+    def test_complaints_every_final_and_persisted_dedupe(self):
+        for i, text in enumerate(('this is broken', 'why is the microphone silent', 'it should talk back')):
+            event = {'type': 'utterance', 'text': text, 'utterance_id': f'turn-{i}', 'source': 'speech'}
+            voice._event(event)
+            voice._event({**event, 'type': 'transcript', 'source': 'gpt_user'})
+            voice._event({**event, 'type': 'tell_hermes', 'kind': 'complaint', 'text': 'Owner says: ' + text})
+        rows = [json.loads(s) for s in (voice.DATA/'inbox.jsonl').read_text().splitlines()]
+        self.assertEqual(len(rows), 3)
+        voice._event({'type': 'transcript', 'source': 'gpt_assistant', 'text': 'this is broken'})
+        self.assertEqual(len((voice.DATA/'inbox.jsonl').read_text().splitlines()), 3)
+
+    def test_fast_classifier_independent_of_gpt_tool(self):
+        request = {'state': {'utterance': 'The orb is hiding behind the camera view', 'utterance_id': 'turn-fast'}, 'questions': {'next_action': {'type': 'choice', 'criteria': {'reobserve': 'Ambiguous', 'abstain': 'Conversation'}}}}
+        result = {'answers': {'next_action': {'type': 'choice', 'choice': 'abstain', 'confidence': 1}, 'feedback': {'type': 'choice', 'choice': 'feedback', 'confidence': .99}}}
+        with patch.object(voice, '_key', return_value='test-only'), patch.object(voice, '_post', return_value=result) as upstream:
+            voice._jev(request)
+            voice._jev(request)
+            self.assertIn('feedback', upstream.call_args.args[1]['questions'])
+        rows = [json.loads(s) for s in (voice.DATA/'inbox.jsonl').read_text().splitlines()]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['kind'], 'complaint')
+
     def test_rules_and_drive_cursor(self):
         self.assertIn('vocabulary',voice._rules())
         (voice.DATA/'rules.json').write_text('{"aliases":{"open icebox":"fridge_open"},"vocabulary":["eggplant"]}')

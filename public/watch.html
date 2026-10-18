@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Garden Room · Live Watch</title><link rel="stylesheet" href="/vendor/rrweb/style.min.css"><style>
+*{box-sizing:border-box}body{margin:0;background:#101411;color:#e2e8dc;font:14px system-ui}header{padding:14px 20px;border-bottom:1px solid #ffffff20;display:flex;gap:16px;align-items:center;flex-wrap:wrap}h1{font-size:16px;margin:0}button,select,input{background:#263027;color:inherit;border:1px solid #ffffff30;border-radius:8px;padding:8px}main{display:grid;grid-template-columns:minmax(400px,1fr) 380px;height:calc(100vh - 70px)}#screen{overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:12px;background:#090c09}#stage{position:relative;flex:none;transform-origin:top left}aside{padding:12px;overflow:auto;border-left:1px solid #ffffff20}.event{padding:7px 8px;border-bottom:1px solid #ffffff12;overflow-wrap:anywhere;white-space:pre-wrap;font:12px/1.4 monospace}.event b{color:#b5d9ad}.event.error,.event.rejection,.event.complaint,.event.bug{background:#572b2b77}.event.complaint{cursor:pointer;border-left:3px solid #fb9}#status{font:12px monospace;color:#bdd2b2}#login{padding:30px}#time{width:200px}body.snapshot header,body.snapshot aside{display:none}body.snapshot main{display:block;height:auto}body.snapshot #screen{padding:0;display:block;overflow:hidden;height:auto}body.snapshot #stage{margin:0}@media(max-width:850px){main{grid-template-columns:1fr;height:auto}aside{max-height:35vh}#screen{height:65vh}}
+</style></head><body><header><h1>Garden Room / WATCH</h1><select id="sessions" aria-label="Recorded session"></select><button id="live">Follow live</button><input id="time" type="datetime-local" step="1" aria-label="Replay at timestamp"><button id="seek">Go to time</button><span id="status">Connecting…</span></header><div id="login" hidden><label>App key <input id="key" type="password" autocomplete="off"></label><button id="unlock">Unlock</button><p>Same private app key as the phone. No third-party service.</p></div><main><section id="screen"><div id="stage"></div></section><aside><strong>Timeline / voice / complaints</strong><p>Click a complaint to inspect its moment. Follow live to return.</p><div id="events"></div></aside></main><script src="/vendor/rrweb/rrweb.min.js"></script><script>
+(() => {
+  const q = new URLSearchParams(location.search), hash = new URLSearchParams(location.hash.slice(1));
+  if (hash.get('k')) { localStorage.setItem('gr_key', hash.get('k')); history.replaceState(null, '', location.pathname + location.search); }
+  let key = localStorage.getItem('gr_key') || '', sid = q.get('session'), at = q.get('at'), following = !q.get('session') && !q.get('at'), player, cursor = 0, busy = false, generation = 0, lastFrame, drawCount = 0;
+  const snapshot = q.get('snapshot') === '1', $ = (id) => document.getElementById(id);
+  if (snapshot) document.body.classList.add('snapshot');
+  async function api(path) { const r = await fetch('/api/replay/' + path, { headers: { 'X-Garden-Key': key }, cache: 'no-store' }); if (r.status === 401) { $('login').hidden = false; throw new Error('App key required'); } const data = await r.json(); if (!r.ok) throw new Error(data.error || 'Replay unavailable'); return data; }
+  $('unlock').onclick = () => { key = $('key').value; localStorage.setItem('gr_key', key); $('key').value = ''; $('login').hidden = true; void reset(); };
+  function decorate() { if (!player?.iframe?.contentDocument) return; const d = player.iframe.contentDocument; player.iframe.style.border = 'none'; if (!d.querySelector('#replay-final-animation')) { const s = d.createElement('style'); s.id = 'replay-final-animation'; s.textContent = '*{animation:none!important;transition:none!important}'; d.head.append(s); } }
+  function frame(event) { if (event?.data?.tag !== 'gr:frame') return; lastFrame = event; const payload = event.data.payload; decorate(); const canvas = player?.getMirror().getNode(payload.id); if (!canvas?.getContext) return; const d = canvas.ownerDocument; let image = d.querySelector('[data-replay-canvas="' + payload.id + '"]'); if (!image) { image = d.createElement('img'); image.dataset.replayCanvas = String(payload.id); image.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none'; canvas.after(image); } image.onload = () => { window.replayFrameTs = event.timestamp; }; if (image.src === payload.image && image.complete) window.replayFrameTs = event.timestamp; else image.src = payload.image; }
+  function scale() { if (!player) return; const iframe = player.iframe; const w = Number(iframe?.width) || 412, h = Number(iframe?.height) || 915; const factor = snapshot ? 1 : Math.min(1, ($('screen').clientWidth - 24) / w, ($('screen').clientHeight - 24) / h || 1); $('stage').style.width = w + 'px'; $('stage').style.height = h + 'px'; $('stage').style.transform = `scale(${Math.max(.1, factor)})`; if (snapshot) { document.body.style.width = w + 'px'; document.body.style.height = h + 'px'; } }
+  function create(events) {
+    player?.destroy(); $('stage').replaceChildren(); lastFrame = null; window.replayFrameTs = null;
+    const playable = events.filter((e) => e.type !== 5 || e.data?.tag !== 'gr:frame');
+    player = new rrweb.Replayer(playable, { root: $('stage'), liveMode: !at, showWarning: false, showDebug: false, blockClass: 'rr-block', mouseTail: false, UNSAFE_replayCanvas: false });
+    player.on('custom-event', frame); player.on('fullsnapshot-rebuilded', () => { scale(); if (lastFrame) frame(lastFrame); });
+    if (at) { const target = Number(at), offset = Math.max(0, target - playable[0].timestamp); player.pause(offset); const frames = events.filter((e) => e.data?.tag === 'gr:frame' && e.timestamp <= target); if (frames.length) frame(frames.at(-1)); }
+    else { player.play(Math.max(0, Date.now() - playable[0].timestamp - 500)); const f = events.filter((e) => e.data?.tag === 'gr:frame').at(-1); if (f) frame(f); }
+    scale(); window.replayPlayer = player; window.replayReady = true;
+  }
+  async function reset() { generation++; cursor = 0; player?.destroy(); player = null; window.replayReady = false; window.replayFrameTs = null; await tick(); }
+  $('sessions').onchange = () => { following = false; sid = $('sessions').value; at = null; void reset(); };
+  $('live').onclick = () => { following = true; sid = null; at = null; void reset(); };
+  $('seek').onclick = () => { if (!$('time').value) return; following = false; at = String(new Date($('time').value).getTime()); void reset(); };
+  async function tick() {
+    if (busy) return; busy = true; const gen = generation;
+    try {
+      if (!snapshot) { const data = await api('sessions'); const old = sid; if (following && data.sessions[0]?.id !== sid) { sid = data.sessions[0]?.id; cursor = 0; player?.destroy(); player = null; } if (!sid) sid = data.sessions[0]?.id; $('sessions').replaceChildren(...data.sessions.map((s) => { const o = document.createElement('option'); o.value = s.id; o.textContent = `${new Date(s.started).toLocaleString()} · ${Date.now() - s.updated * 1000 < 5000 ? 'LIVE' : 'ended'}`; o.selected = s.id === sid; return o; })); if (old && !data.sessions.some((s) => s.id === old)) { sid = data.sessions[0]?.id; cursor = 0; player?.destroy(); player = null; } }
+      if (!sid) { $('status').textContent = 'No recordings yet. Open the phone app.'; return; }
+      if (!at || !player) {
+        const params = new URLSearchParams({ session: sid, ...(at ? { at } : {}), ...(player ? { after: String(cursor) } : { recent: '1' }) });
+        const data = await api('events?' + params);
+        if (gen !== generation) return;
+        cursor = data.cursor;
+        if (!player && data.events.some((e) => e.type === 2)) create(data.events);
+        else if (player && !at) for (const e of data.events) { if (e.type === 5 && e.data?.tag === 'gr:frame') frame(e); else player.addEvent(e); }
+        window.replayLastTs = data.session.last_ts;
+        $('status').textContent = `${at ? 'At ' + new Date(Number(at)).toLocaleTimeString() : Date.now() - data.session.updated * 1000 < 5000 ? 'LIVE' : 'Offline / paused'} · ${Math.max(0, Date.now() - (window.replayFrameTs || data.session.last_ts))} ms frame age`;
+      }
+      if (!snapshot) {
+        const end = at ? Number(at) + 1000 : Date.now(), data = await api('timeline?' + new URLSearchParams({ session: sid, since: String(end - 30000), until: String(end), limit: '300' }));
+        $('events').replaceChildren(...data.timeline.filter((r) => r.kind !== 'performance' && r.kind !== 'longtask').map((r) => { const d = document.createElement('div'); d.className = 'event ' + r.kind; const b = document.createElement('b'); b.textContent = new Date(r.ts).toLocaleTimeString() + ' ' + r.kind; d.append(b, document.createTextNode('\n' + JSON.stringify(r.data))); if (['complaint', 'bug', 'request'].includes(r.kind)) d.onclick = () => { following = false; at = String(r.ts); void reset(); }; return d; }));
+      }
+    } catch (e) { $('status').textContent = e.message; window.replayError = e.message; } finally { busy = false; }
+  }
+  addEventListener('resize', scale); setInterval(() => { decorate(); if (lastFrame && player && !player.iframe.contentDocument.querySelector('[data-replay-canvas]')) frame(lastFrame); }, 200); setInterval(tick, 500); void tick();
+})();
+</script></body></html>

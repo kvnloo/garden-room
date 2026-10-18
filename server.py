@@ -105,6 +105,58 @@ def read_json(path, default):
         return default
 
 
+ROOM_EDGE_NAMES = ["East wall (fridge, china)", "Angled SE wall (kitchen only)", "South wall (mirror)", "West wall (main entrance)", "North wall (window)"]
+LEGACY_ROOM = {"v": 2, "h": 2.6, "poly": [[0,0],[2.5576,0],[3.6576,1.1],[3.6576,3.6576],[0,3.6576]], "window": {"edge":4,"t0":1.05,"t1":2.65,"sill":0.78,"top":2.15}, "openings": [{"name":"Kitchen archway","edge":1,"t0":0.45,"t1":1.3,"top":2.15,"clear":0.45},{"name":"Entrance arch","edge":3,"t0":1,"t1":2.6,"top":2.3,"clear":0.9}]}
+
+
+def migrate_plan(plan, legacy_room=None):
+    """Rotate v2 clockwise once. Edge indices/distances stay attached to the same physical walls."""
+    if not isinstance(plan, dict):
+        return plan
+    room = plan.get("room") or legacy_room
+    if not room or room.get("v") != 2 or plan.get("orientationVersion") == 3:
+        return plan
+    depth = max(p[1] for p in room["poly"])
+    def rotate(value):
+        if isinstance(value, list):
+            return [rotate(v) for v in value]
+        if not isinstance(value, dict):
+            return value
+        out = {k: rotate(v) for k, v in value.items()}
+        if isinstance(value.get("x"), (int, float)) and isinstance(value.get("z"), (int, float)):
+            out.update(x=depth-value["z"], z=value["x"])
+            if "rot" in value:
+                out["rot"] = (value["rot"]+1) % 4
+        if value.get("v") == 2 and "poly" in value:
+            out.update(v=3, poly=[[depth-z,x] for x,z in value["poly"]], edgeNames=ROOM_EDGE_NAMES)
+            out["window"]["facing"] = "north"
+        return out
+    out = rotate(plan)
+    if "room" not in out:
+        out["room"] = rotate(room)
+    out["orientationVersion"] = 3
+    return out
+
+
+def migrate_saved_plans(data_dir=DATA):
+    """Back up before mutation, migrate current + legacy item-only saved layouts atomically."""
+    state_path = data_dir / "state.json"
+    previous = read_json(state_path, {})
+    legacy = previous.get("room") if previous.get("room", {}).get("v") == 2 else None
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    for name in ("state", "layouts"):
+        path = data_dir / (name+".json")
+        if not path.exists():
+            continue
+        old = read_json(path, {} if name == "state" else [])
+        new = migrate_plan(old) if name == "state" else [migrate_plan(p, legacy or LEGACY_ROOM) for p in old]
+        if new != old:
+            backup = path.with_name(name+".backup-"+stamp+".json")
+            backup.write_bytes(path.read_bytes())
+            tmp = path.with_suffix(".migrating")
+            tmp.write_text(json.dumps(new, indent=2)); tmp.replace(path)
+
+
 def list_scans():
     items = []
     for d in sorted(SCANS.iterdir(), reverse=True):
@@ -213,6 +265,10 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json(200, {"ok": True, "bytes": n})
         if p.path in ("/api/state", "/api/layouts"):
             data = self.body()
+            if p.path == "/api/state":
+                data = migrate_plan(data)
+            else:
+                data = [migrate_plan(plan, LEGACY_ROOM) for plan in data]
             target = DATA / ("state.json" if p.path == "/api/state" else "layouts.json")
             tmp = target.with_suffix(".tmp")
             tmp.write_text(json.dumps(data))
@@ -288,6 +344,7 @@ def try_routes(h, method):
 
 
 def main():
+    migrate_saved_plans()
     load_routes()
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", action="append", default=None)

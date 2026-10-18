@@ -63,7 +63,7 @@ await page.route('**/api/state', (r) => r.fulfill({ json: r.request().method() =
 await page.route('**/api/ar/calib', (r) => { if (r.request().method() === 'POST') { calibRecord = r.request().postDataJSON(); return r.fulfill({ json: { ok: true } }); } return r.fulfill({ json: calibRecord }); });
 await page.addInitScript(() => { localStorage.clear(); Object.defineProperty(navigator, 'xr', { configurable: true, value: { isSessionSupported: async () => false } }); });
 try {
-  await page.goto(`${base}/#k=${key}`); await page.waitForFunction(() => window.GR && document.querySelector('[data-panel=ar]'));
+  await page.goto(`${base}/#k=${key}`); await page.waitForFunction(() => window.GR?.ar); await page.tap('[data-panel=live]');
   await page.tap('[data-panel=ar]'); await page.waitForFunction(() => document.querySelector('#ar-mode').textContent.includes('PHOTO'));
   assert.equal(await page.locator('#ar-start').isDisabled(), true); assert.match(await page.locator('#ar-instruction').textContent(), /photo/i);
   await page.screenshot({ path: out + 'ar-fallback.png' }); results['real app: unsupported AR clearly labelled, no camera permission'] = 'PASS';

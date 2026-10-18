@@ -48,13 +48,13 @@ const IN = 0.0254, FT = 0.3048, CM = 0.01;
 const toIn = (m) => Math.round(m / IN * 10) / 10;
 const fmtFt = (m) => { const i = Math.round(m / IN); return `${Math.floor(i / 12)}′${i % 12}″`; };
 
-// ───────── room: 5 walls (x east, z south, metres). NE corner is cut: angled wall with the kitchen archway ─────────
+// ───────── room: x east, z south. Clockwise migration preserves photo handedness; kitchen is SE. ─────────
 const RW = 12 * FT, RD = 12 * FT, CUT = 1.1;
 const DEFAULT_ROOM = {
-  v: 2, h: 2.6,
-  poly: [[0, 0], [RW - CUT, 0], [RW, CUT], [RW, RD], [0, RD]],
-  edgeNames: ['North wall (fridge, china)', 'Angled wall (kitchen arch)', 'East wall (mirror)', 'South wall (entrance)', 'West wall (window)'],
-  window: { edge: 4, t0: 1.05, t1: 2.65, sill: 0.78, top: 2.15 },
+  v: 3, h: 2.6,
+  poly: [[RW, 0], [RW, RD - CUT], [RW - CUT, RD], [0, RD], [0, 0]],
+  edgeNames: ['East wall (fridge, china)', 'Angled SE wall (kitchen only)', 'South wall (mirror)', 'West wall (main entrance)', 'North wall (window)'],
+  window: { facing: 'north', edge: 4, t0: 1.05, t1: 2.65, sill: 0.78, top: 2.15 },
   openings: [
     { name: 'Kitchen archway', edge: 1, t0: 0.45, t1: 1.3, top: 2.15, clear: 0.45 },
     { name: 'Entrance arch', edge: 3, t0: 1.0, t1: 2.6, top: 2.3, clear: 0.9 },
@@ -67,9 +67,10 @@ const LIGHT_SPEC = {
   lamp5: { name: '5-arm floor lamp', power: 0.8, radius: 0.9, w: 0.5, d: 0.5, h: 1.6, overhead: false, color: 0xffd8a0 },
   ring:  { name: 'Ring light', power: 0.5, radius: 0.6, w: 0.35, d: 0.35, h: 1.5, overhead: false, color: 0xfff1d6 },
 };
-const SURFACE = { table: true, glass: true };
+const SURFACE = { table: true, glass: true, stand: true };
 
-function edge(room, i) { const a = room.poly[i], b = room.poly[(i + 1) % room.poly.length]; const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz); const u = [dx / L, dz / L]; let n = [-u[1], u[0]]; const c = centroid(room); const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; if ((c[0] - mid[0]) * n[0] + (c[1] - mid[1]) * n[1] < 0) n = [-n[0], -n[1]]; return { a, b, L, u, n }; }
+const EDGE_CACHE = new WeakMap();
+function edge(room, i) { const cached = EDGE_CACHE.get(room)?.[i]; if(cached) return cached; const a = room.poly[i], b = room.poly[(i + 1) % room.poly.length]; const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz); const u = [dx / L, dz / L]; let n = [-u[1], u[0]]; const c = centroid(room); const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; if ((c[0] - mid[0]) * n[0] + (c[1] - mid[1]) * n[1] < 0) n = [-n[0], -n[1]]; const result = { a, b, L, u, n }; if(!EDGE_CACHE.has(room)) EDGE_CACHE.set(room,[]); EDGE_CACHE.get(room)[i]=result; return result; }
 function centroid(room) { const p = room.poly; return [p.reduce((s, q) => s + q[0], 0) / p.length, p.reduce((s, q) => s + q[1], 0) / p.length]; }
 function onEdge(room, i, t, inset = 0) { const e = edge(room, i); return [e.a[0] + e.u[0] * t + e.n[0] * inset, e.a[1] + e.u[1] * t + e.n[1] * inset]; }
 function inside(room, x, z) { const p = room.poly; let c = false; for (let i = 0, j = p.length - 1; i < p.length; j = i++) { if ((p[i][1] > z) !== (p[j][1] > z) && x < (p[j][0] - p[i][0]) * (z - p[i][1]) / (p[j][1] - p[i][1]) + p[i][0]) c = !c; } return c; }
@@ -95,7 +96,7 @@ function defaultItems(plants) {
   items.push({ id: 'ring1', kind: 'ring', name: 'Ring light 1', x: 1.8, z: 3.35, rot: 0, ...dims('ring') });
   items.push({ id: 'ring2', kind: 'ring', name: 'Ring light 2', x: 3.35, z: 2.8, rot: 0, ...dims('ring') });
   plants.forEach((p, i) => items.push(plantItem(p, 0.25 + (i % 6) * 0.55, 1.4 + Math.floor(i / 6) * 0.5)));
-  return items;
+  return items.map((it) => ({ ...it, x: RW - it.z, z: it.x, rot: (it.rot + 1) % 4 }));
 }
 function plantItem(p, x, z) {
   const box = p.potD >= 70;
@@ -112,28 +113,44 @@ function footprint(it) { const sw = it.rot % 2 ? it.d : it.w, sd = it.rot % 2 ? 
 const isRound = (it) => it.kind === 'plant' && !it.box;
 function rectOverlap(A, B) { const ox = Math.min(A.x1, B.x1) - Math.max(A.x0, B.x0), oz = Math.min(A.z1, B.z1) - Math.max(A.z0, B.z0); return ox > 0 && oz > 0 ? Math.min(ox, oz) : 0; }
 function overlapAmt(a, b) { if (isRound(a) && isRound(b)) return Math.max(0, a.w / 2 + b.w / 2 - Math.hypot(a.x - b.x, a.z - b.z)); return rectOverlap(footprint(a), footprint(b)); }
+// Signed pot-edge distance: circle/circle, circle/box, or box/box.
+function potGap(a, b) {
+  if (isRound(a) && isRound(b)) return Math.hypot(a.x - b.x, a.z - b.z) - (a.w + b.w) / 2;
+  if (isRound(a) || isRound(b)) { const c = isRound(a) ? a : b, r = footprint(isRound(a) ? b : a); return Math.hypot(Math.max(r.x0 - c.x, 0, c.x - r.x1), Math.max(r.z0 - c.z, 0, c.z - r.z1)) - c.w / 2; }
+  const A = footprint(a), B = footprint(b), dx = Math.max(A.x0 - B.x1, B.x0 - A.x1), dz = Math.max(A.z0 - B.z1, B.z0 - A.z1);
+  return dx > 0 || dz > 0 ? Math.hypot(Math.max(0, dx), Math.max(0, dz)) : Math.max(dx, dz);
+}
+const breathingRoom = (a, b) => 0.05 + Math.min(0.05, Math.max(a.w, a.d, b.w, b.d) * 0.1);
 function polyRectOverlap(poly, F) { // SAT for convex polygon vs AABB; returns penetration depth
   const rect = [[F.x0, F.z0], [F.x1, F.z0], [F.x1, F.z1], [F.x0, F.z1]]; let best = Infinity;
   const axes = [[1, 0], [0, 1]]; for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); axes.push([-(b[1] - a[1]) / L, (b[0] - a[0]) / L]); }
   for (const ax of axes) { const pr = (pts) => { let lo = Infinity, hi = -Infinity; for (const p of pts) { const v = p[0] * ax[0] + p[1] * ax[1]; lo = Math.min(lo, v); hi = Math.max(hi, v); } return [lo, hi]; }; const [a0, a1] = pr(poly), [b0, b1] = pr(rect); const o = Math.min(a1, b1) - Math.max(a0, b0); if (o <= 0) return 0; best = Math.min(best, o); }
   return best;
 }
-function canSit(p, s) { return !p.box && p.potD <= (s.kind === 'glass' ? 0.32 : 0.46); }
+function canSit(p, s) { return !p.box && p.potD <= (s.kind === 'stand' ? Math.min(s.w,s.d)-0.04 : s.kind === 'glass' ? 0.4 : 0.46); }
 function supportOf(it, items) { // surface the item stands on (plants only)
   if (it.kind !== 'plant') return null; let best = null;
-  for (const s of items) { if (!SURFACE[s.kind] || s === it) continue; const F = footprint(s); if (it.x > F.x0 && it.x < F.x1 && it.z > F.z0 && it.z < F.z1 && (!best || s.h > best.h)) best = s; }
+  for (const s of items) { if (!SURFACE[s.kind] || s === it || !canSit(it, s)) continue; const F = footprint(s), P = footprint(it); if (P.x0 < F.x0 || P.x1 > F.x1 || P.z0 < F.z0 || P.z1 > F.z1) continue; if (it.x > F.x0 && it.x < F.x1 && it.z > F.z0 && it.z < F.z1 && (!best || s.h > best.h)) best = s; }
   return best;
 }
 const baseY = (it, items) => { const s = supportOf(it, items); return s ? s.h : 0; };
 
+const ZONE_CACHE = new WeakMap();
 function clearanceZones(items, room) {
   const zones = [];
   const f = items.find((i) => i.kind === 'fridge');
+  const signature = f ? [f.x,f.z,f.rot,f.w,f.d].join(',') : ''; const cached = ZONE_CACHE.get(room); if(cached?.signature === signature) return cached.zones;
   if (f) { const F = footprint(f), dp = Math.max(f.w, 0.75) + 0.1, dir = ['S', 'W', 'N', 'E'][f.rot % 4];
     const r = dir === 'S' ? { x0: F.x0, x1: F.x1, z0: F.z1, z1: F.z1 + dp } : dir === 'N' ? { x0: F.x0, x1: F.x1, z0: F.z0 - dp, z1: F.z0 } : dir === 'E' ? { x0: F.x1, x1: F.x1 + dp, z0: F.z0, z1: F.z1 } : { x0: F.x0 - dp, x1: F.x0, z0: F.z0, z1: F.z1 };
     zones.push({ name: 'Fridge door swing', fridge: true, poly: [[r.x0, r.z0], [r.x1, r.z0], [r.x1, r.z1], [r.x0, r.z1]] }); }
   for (const o of room.openings) { const a0 = onEdge(room, o.edge, o.t0), a1 = onEdge(room, o.edge, o.t1), b1 = onEdge(room, o.edge, o.t1, o.clear), b0 = onEdge(room, o.edge, o.t0, o.clear); zones.push({ name: o.name, poly: [a0, a1, b1, b0] }); }
-  return zones;
+  const entry = room.openings.find((o) => /entrance/i.test(o.name)), kitchen = room.openings.find((o) => /kitchen/i.test(o.name));
+  if (entry && kitchen) {
+    const a = onEdge(room, entry.edge, (entry.t0 + entry.t1) / 2, entry.clear), b = onEdge(room, kitchen.edge, (kitchen.t0 + kitchen.t1) / 2, kitchen.clear), c = centroid(room);
+    for (const [p, q] of [[a, c], [c, b]]) { const L = Math.hypot(q[0] - p[0], q[1] - p[1]), nx = -(q[1] - p[1]) / L * 0.36, nz = (q[0] - p[0]) / L * 0.36;
+      zones.push({ name: '72 cm walkway', poly: [[p[0]+nx,p[1]+nz],[q[0]+nx,q[1]+nz],[q[0]-nx,q[1]-nz],[p[0]-nx,p[1]-nz]] }); }
+  }
+  ZONE_CACHE.set(room,{signature,zones}); return zones;
 }
 
 // ───────── light model (window = Lambert-weighted area samples, grow lights = gaussian pools) ─────────
@@ -143,7 +160,8 @@ function winRaw(x, y, z) { let s = 0; for (const p of WIN) { const dx = x - p.x,
 let WIN_NORM = 1;
 function normWin(room) { buildWin(room); const w = room.window; const p = onEdge(room, w.edge, (w.t0 + w.t1) / 2, 0.3); WIN_NORM = winRaw(p[0], 1.4, p[1]) || 1; }
 function lightAt(x, z, items, y = 0.6) {
-  let L = winRaw(x, y, z) / WIN_NORM;
+  // North-facing glass contributes diffuse skylight only; grow-light pools are unchanged.
+  let L = winRaw(x, y, z) / WIN_NORM * (state.room.window.facing === 'north' ? 0.65 : 1);
   for (const it of items) { const s = LIGHT_SPEC[it.kind]; if (!s) continue; let lx = it.x, lz = it.z; if (it.kind === 'stake' && it.attach) { const p = items.find((q) => q.id === it.attach); if (p) { lx = p.x; lz = p.z; } } const d = Math.hypot(x - lx, z - lz); L += s.power * Math.exp(-((d / s.radius) ** 2)); }
   return L;
 }
@@ -153,17 +171,23 @@ function distToWindow(x, z, room) { const w = room.window, e = edge(room, w.edge
 function evaluate(items, room, opts = { winWeight: 0.3 }) {
   const warns = []; let pen = 0;
   const plants = items.filter((i) => i.kind === 'plant');
-  let sat = 0, prox = 0;
-  for (const p of plants) { const s = supportOf(p, items); p._on = s ? s.id : ''; const y = (s ? s.h : 0) + p.potH + p.height * 0.6; const L = lightAt(p.x, p.z, items, Math.min(1.6, y)); p._light = L; p._sat = Math.min(1, L / NEED[p.light]); sat += p._sat; prox += Math.exp(-distToWindow(p.x, p.z, room) / 1.2); }
+  let sat = 0, prox = 0, overlaps = 0, spacingViolations = 0;
+  for (const p of plants) { const s = supportOf(p, items); p._on = s ? s.id : ''; const y = (s ? s.h : 0) + p.potH + p.height * 0.6; const L = lightAt(p.x, p.z, items, Math.min(1.6, y)); p._light = L; p._sat = Math.min(1, L / NEED[p.light]); sat += p._sat; prox += Math.exp(-distToWindow(p.x, p.z, room) / 1.2) * NEED[p.light] / NEED.high; }
   sat /= Math.max(1, plants.length); prox /= Math.max(1, plants.length);
   const solid = items.filter((i) => !(LIGHT_SPEC[i.kind] && LIGHT_SPEC[i.kind].overhead));
   for (const it of solid) { const o = outside(room, footprint(it)); if (o > 0.01) { pen += 120 * o + 6; warns.push(`${it.name} is outside the room`); } }
   for (let i = 0; i < solid.length; i++) for (let j = i + 1; j < solid.length; j++) {
     const a = solid[i], b = solid[j];
-    if (a.kind === 'plant' && b.kind === 'plant' && a._on !== b._on) continue; // different levels
+    if (a.kind === 'plant' && b.kind === 'plant') {
+      // Do not allow a change of support ID to hide clumped pots/canopies.
+      const gap = potGap(a, b), minGap = breathingRoom(a, b);
+      if (gap < -0.005) overlaps++;
+      if (gap < minGap - 0.001) { spacingViolations++; pen += 500 * (minGap - gap) + 15; warns.push(`${a.name} needs breathing room from ${b.name}`); }
+      continue;
+    }
     if ((a.kind === 'plant' && a._on === b.id) || (b.kind === 'plant' && b._on === a.id)) continue; // standing on it
-    if ((a.kind === 'plant' && a._on && !SURFACE[b.kind]) || (b.kind === 'plant' && b._on && !SURFACE[a.kind])) continue; // raised above floor items
-    const o = overlapAmt(a, b); if (o > 0.005) { pen += 120 * o + 5; warns.push(`${a.name} overlaps ${b.name}`); }
+    if ((a.kind === 'plant' && baseY(a, items) >= b.h) || (b.kind === 'plant' && baseY(b, items) >= a.h)) continue; // only skip genuinely lower objects
+    const o = overlapAmt(a, b); if (o > 0.005) { overlaps++; pen += 500 * o + 25; warns.push(`${a.name} overlaps ${b.name}`); }
   }
   for (const p of plants) if (p._on) { const s = items.find((i) => i.id === p._on), S = footprint(s), P = footprint(p);
     const hang = Math.max(0, S.x0 - P.x0) + Math.max(0, P.x1 - S.x1) + Math.max(0, S.z0 - P.z0) + Math.max(0, P.z1 - S.z1);
@@ -174,18 +198,39 @@ function evaluate(items, room, opts = { winWeight: 0.3 }) {
     const o = polyRectOverlap(z.poly, footprint(it)); if (o > 0.01) { pen += 300 * o + 60; /* hard: never trade door clearance for light */ warns.push(`${it.name} blocks ${z.name.toLowerCase()}`); }
   }
   for (const t of items) if (t.wall) { const F = footprint(t); const d = Math.min(...[[F.x0, t.z], [F.x1, t.z], [t.x, F.z0], [t.x, F.z1]].map(([x, z]) => wallDist(room, x, z))); if (d > 0.06) { pen += 20 * d + 1; warns.push(`(soft) ${t.name} is off the wall`); } }
-  return { score: 100 * ((1 - opts.winWeight) * sat + opts.winWeight * prox) - pen, lightSat: sat, winProx: prox, pen, warns };
+  return { score: 100 * ((1 - opts.winWeight) * sat + opts.winWeight * prox) - pen, lightSat: sat, winProx: prox, pen, overlaps, spacingViolations, warns };
 }
 
 // ───────── optimizer: simulated annealing + conflict repair ─────────
 function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-function optimize(items, room, { seed = 1, moveFurniture = false, winWeight = 0.3, iters = 12000 } = {}) {
+function optimize(items, room, { seed = 1, moveFurniture = false, winWeight = 0.3, iters = 6000 } = {}) {
   const rnd = mulberry(seed), B = bounds(room), opts = { winWeight };
-  const cur = items.map((i) => ({ ...i }));
+  let cur = items.map((i) => ({ ...i }));
+  // Repack the worst clumps before annealing; reject collisions rather than buying light with them.
+  if (evaluate(cur, room, opts).spacingViolations) {
+    const plants = cur.filter((p) => p.kind === 'plant' && !p.locked).sort((a,b) => b.w*b.d - a.w*a.d);
+    cur = cur.filter((p) => !plants.some((q) => q.id === p.id));
+    // Clear door swings/routes with the movable tables and lamp bases before filling shelves.
+    for (const it of cur.filter((i)=>!i.locked && ['glass','lamp5','ring'].includes(i.kind))) {
+      let best={x:it.x,z:it.z,rot:it.rot}, score=evaluate(cur,room,opts).score;
+      for(let rot=0;rot<2;rot++) for(let x=B.x0+0.3;x<B.x1;x+=0.2) for(let z=B.z0+0.3;z<B.z1;z+=0.2) { Object.assign(it,{x,z,rot}); const e=evaluate(cur,room,opts); if(e.score>score) {score=e.score;best={x,z,rot};} }
+      Object.assign(it,best);
+    }
+    for (const p of plants) {
+      let best = null, score = -Infinity;
+      const candidates = [];
+      for (const s of cur.filter((s) => SURFACE[s.kind] && canSit(p,s))) { const F = footprint(s); for (let x=F.x0+p.w/2+0.015;x<=F.x1-p.w/2-0.015;x+=0.09) for(let z=F.z0+p.d/2+0.015;z<=F.z1-p.d/2-0.015;z+=0.09) candidates.push([x,z]); }
+      for (let x=B.x0+p.w/2+0.025;x<B.x1-p.w/2;x+=0.14) for(let z=B.z0+p.d/2+0.025;z<B.z1-p.d/2;z+=0.14) candidates.push([x,z]);
+      cur.push(p);
+      for (const [x,z] of candidates) { p.x=x;p.z=z; const e=evaluate(cur,room,opts); const usage = supportOf(p,cur); const bonus = usage ? 1.5 / (1 + cur.filter((q)=>q!==p && q.kind==='plant' && q._on===usage.id).length) : 0;
+        if (e.score+bonus>score) { score=e.score+bonus;best=[x,z]; } }
+      if (best) [p.x,p.z]=best;
+    }
+  }
   const movable = cur.filter((i) => (moveFurniture || !i.locked) && i.kind !== 'stake' && !(i.kind === 'fridge'));
-  const surfaces = () => cur.filter((s) => SURFACE[s.kind]);
+  const surfaces = (collection = cur) => collection.filter((s) => SURFACE[s.kind]);
   const clamp = (it) => { const F = footprint(it), hw = (F.x1 - F.x0) / 2, hd = (F.z1 - F.z0) / 2; it.x = Math.min(B.x1 - hw, Math.max(B.x0 + hw, it.x)); it.z = Math.min(B.z1 - hd, Math.max(B.z0 + hd, it.z)); };
-  const jump = (it) => { const ss = surfaces().filter((s) => it.kind === 'plant' && canSit(it, s)); if (ss.length && rnd() < 0.4) { const s = ss[Math.floor(rnd() * ss.length)], F = footprint(s); it.x = F.x0 + it.w / 2 + rnd() * Math.max(0, F.x1 - F.x0 - it.w); it.z = F.z0 + it.d / 2 + rnd() * Math.max(0, F.z1 - F.z0 - it.d); } else { it.x = B.x0 + rnd() * (B.x1 - B.x0); it.z = B.z0 + rnd() * (B.z1 - B.z0); } };
+  const jump = (it, collection = cur) => { const ss = surfaces(collection).filter((s) => it.kind === 'plant' && canSit(it, s)); if (ss.length && rnd() < 0.4) { const s = ss[Math.floor(rnd() * ss.length)], F = footprint(s); it.x = F.x0 + it.w / 2 + rnd() * Math.max(0, F.x1 - F.x0 - it.w); it.z = F.z0 + it.d / 2 + rnd() * Math.max(0, F.z1 - F.z0 - it.d); } else { it.x = B.x0 + rnd() * (B.x1 - B.x0); it.z = B.z0 + rnd() * (B.z1 - B.z0); } };
   const snap = () => cur.map((i) => ({ ...i }));
   let cs = evaluate(cur, room, opts).score, best = snap(), bs = cs;
   for (let k = 0; k < iters; k++) {
@@ -197,16 +242,33 @@ function optimize(items, room, { seed = 1, moveFurniture = false, winWeight = 0.
     if (ns >= cs || rnd() < Math.exp((ns - cs) / T)) { cs = ns; if (ns > bs) { bs = ns; best = snap(); } } else Object.assign(it, old);
   }
   const res = best, mov = res.filter((i) => movable.some((m) => m.id === i.id));
-  for (let pass = 0; pass < 3; pass++) {
+  for (let pass = 0; pass < 2; pass++) {
     const ev = evaluate(res, room, opts); if (ev.pen < 0.01) break;
-    for (const it of mov) { if (!ev.warns.some((w) => w.includes(it.name))) continue; let bx = it.x, bz = it.z, br = it.rot, bsc = evaluate(res, room, opts).score;
-      for (let t = 0; t < 250; t++) { jump(it); if (!isRound(it)) it.rot = Math.floor(rnd() * 4); clamp(it); const s = evaluate(res, room, opts).score; if (s > bsc) { bsc = s; bx = it.x; bz = it.z; br = it.rot; } }
-      it.x = bx; it.z = bz; it.rot = br; }
+    const ps = mov.filter((i)=>i.kind==='plant');
+    for (let i=0;i<ps.length;i++) for(let j=i+1;j<ps.length;j++) { const a=ps[i],b=ps[j],old=[a.x,a.z,b.x,b.z],before=evaluate(res,room,opts).score; [a.x,a.z,b.x,b.z]=[b.x,b.z,a.x,a.z]; if(evaluate(res,room,opts).score<=before) [a.x,a.z,b.x,b.z]=old; }
+    for (const it of mov) {
+      if (!ev.warns.some((w) => w.includes(it.name))) continue;
+      let best = {x:it.x,z:it.z,rot:it.rot}, bsc = evaluate(res,room,opts).score;
+      const candidates=[];
+      for (const s of surfaces(res).filter((s)=>it.kind==='plant' && canSit(it,s))) { const F=footprint(s); for(let x=F.x0+it.w/2+0.005;x<=F.x1-it.w/2-0.005;x+=0.055) for(let z=F.z0+it.d/2+0.005;z<=F.z1-it.d/2-0.005;z+=0.055) candidates.push([x,z]); }
+      for(let x=B.x0+it.w/2+0.01;x<B.x1-it.w/2;x+=0.075) for(let z=B.z0+it.d/2+0.01;z<B.z1-it.d/2;z+=0.075) candidates.push([x,z]);
+      for(const [x,z] of candidates) { it.x=x;it.z=z;const e=evaluate(res,room,opts); if(e.score>bsc) {bsc=e.score;best={x,z,rot:it.rot};} }
+      Object.assign(it,best);
+    }
   }
   evaluate(res, room, opts);
   const needy = res.filter((i) => i.kind === 'plant').sort((a, b) => a._sat - b._sat || NEED[b.light] - NEED[a.light]);
-  res.filter((i) => i.kind === 'stake').forEach((s, n) => { const p = needy[n]; if (p) { s.attach = p.id; s.x = p.x; s.z = p.z; } });
+  res.filter((i) => i.kind === 'stake').forEach((s, n) => { const p = needy[n], old = { ...s }, before = evaluate(res, room, opts).score; if (p) { s.attach = p.id; s.x = p.x; s.z = p.z; if (evaluate(res, room, opts).score < before) Object.assign(s, old); } });
   return { items: res, ...evaluate(res, room, opts) };
+}
+
+// Run the very same pure scoring/packing functions off the render thread; no second optimizer implementation.
+function optimizeAsync(items, room, opts) {
+  if (!window.Worker) return Promise.resolve(optimize(items, room, opts));
+  const functions = [edge, centroid, onEdge, inside, distToEdge, wallDist, outside, bounds, footprint, rectOverlap, overlapAmt, potGap, polyRectOverlap, canSit, supportOf, clearanceZones, buildWin, winRaw, normWin, lightAt, distToWindow, evaluate, mulberry, optimize];
+  const source = `const LIGHT_SPEC=${JSON.stringify(LIGHT_SPEC)}, NEED=${JSON.stringify(NEED)}, SURFACE=${JSON.stringify(SURFACE)};const EDGE_CACHE=new WeakMap(),ZONE_CACHE=new WeakMap(),WIN=[];let WIN_NORM=1,state;const isRound=${isRound.toString()},baseY=${baseY.toString()},breathingRoom=${breathingRoom.toString()};${functions.map((f)=>f.toString()).join('\n')}\nonmessage=({data})=>{try{state={room:data.room};normWin(data.room);postMessage({result:optimize(data.items,data.room,data.opts)});}catch(e){postMessage({error:String(e)});}};`;
+  const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'})), worker=new Worker(url); URL.revokeObjectURL(url);
+  return new Promise((resolve,reject)=>{worker.onmessage=({data})=>{worker.terminate();data.error ? reject(new Error(data.error)) : resolve(data.result);};worker.onerror=(e)=>{worker.terminate();reject(new Error(e.message));};worker.postMessage({items,room,opts});});
 }
 
 // ───────── three.js scene ─────────
@@ -220,20 +282,22 @@ const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 50);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.495; controls.minDistance = 0.4; controls.maxDistance = 12;
 scene.add(new THREE.HemisphereLight(0xfff6e8, 0x6b5a44, 1.25));
-const sun = new THREE.DirectionalLight(0xffe9c4, 2.0); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+const sun = new THREE.DirectionalLight(0xd8e7ff, 0.65); sun.castShadow = false; sun.shadow.mapSize.set(1024, 1024);
 Object.assign(sun.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, near: 0.5, far: 14 }); sun.shadow.bias = -0.0008; scene.add(sun, sun.target);
 const chand = new THREE.PointLight(0xffd9a0, 1.2, 6, 1.6); scene.add(chand);
 const roomGroup = new THREE.Group(), itemGroup = new THREE.Group(), zoneGroup = new THREE.Group(); scene.add(roomGroup, itemGroup, zoneGroup);
-let walls = [], heatTex, heatCanvas, heatMesh;
+let walls = [], heatTex, heatCanvas, heatMesh, floorMesh;
+let realLook = false;
 const meshes = new Map(), texLoader = new THREE.TextureLoader();
 const STD = (o) => new THREE.MeshStandardMaterial({ roughness: 0.85, ...o });
 
+const realCarpet = texLoader.load('data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAQDAwMDAgQDAwMEBAQFBgoGBgUFBgwICQcKDgwPDg4MDQ0PERYTDxAVEQ0NExoTFRcYGRkZDxIbHRsYHRYYGRj/2wBDAQQEBAYFBgsGBgsYEA0QGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBj/wAARCAAnAF8DASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDyeMyR2+6aIrg4bj5j7gUqyweYxFwXGSNhPEnsPpVcW7vK6KVkx3cHkfX1qT7K0cQki83CYQovp2xXj8p6NyVLdbi2lMLRzEn5jnjI7e39ahUJNAZSWBU8xt8oB7/L1zT1iSIF1t3xISHCE4Ld8j1oi2unmOE387VYcBe3H0pWC43yo9omeNm8wDqc5P4VL87SEeXhyMIM4AxUAZXsw3ll4G+6ydSfXHpQsriDcWB/hJTvj1PbH60WC44Qybirxx7iS3ByTTB5hk3bFKkdM4AH1qaKdZCsn2lS3ckjI9c0LcCQsgUjcSBtIPA9vWmFyFoNzAGJdiuDuPUcUkiCWHDKpyOB0z9Kkz+7Dq0pUAn50UZ/OqsTzyI7Rv5bDoAQSv1HapsFyNdgYBc7AAMDBokgTBJhViOME7SPwpXgeRcSSybc7twRQPzpJZGEW9WkKtgYHLZ+lPULm46LtE1tKHGeSgpsofynLl1bOGYIScemP61HbRLeyC9MshkQldwXaD6grT13Mssagkgj7Otw4KcdcjqD9a3I5ilF5MVwYykgh3Z3M+A3HGfQirEU6eSYX52/d3nHzddwHU/yqcvOtyXcRwoygsXXfn2GOgqK5ljmkWa2EKvG/OWKsAf50rDuUjc2Mqs6SEkHLEHCtnuQ3GfpTv8AQyVeBBGOAGY7hjsRjgVFdPktD5jvs4yAMx/XPIFJHDcKY0IYMPm3gFu2c++evtSC4syoLt4mG5u0+wDcPTHf61NHbxYBaNtw5QAfIPy70ySLzZDJOu3b8quQSFI7cUGKYQNunORgh4/lBP49qBkss0Rj2PE4AAG1nAI+tU2O3fGYwqL8pGDuY+nvViZgHQs584jJQjO71JNQxzSXJECzSIhXKgr1HUHP070rCuRwF8InlqG2/dPUehIqvMs25mltxPJuACnKInHr61deKCWIpCWWPALuHB3H2NNjtpyGW1udxGBhmBGB7+tMLmsdPa3a6vZ7eCK4SJmDgkjjjBA4zSSy2ywbd378dMqSoJ9KKKogj/f26edIxOVKiUYXnP3cDnHvVO6Wee82geRNsO1mAfeM8gentmiigorxxwTfurdJUaPepDSn95z3phijhY2axyFmIBQyZ4J27s/hRRUgXIWjgvDDHIy7V+8wzn2/+vRBcQztNuiC+SxV93IPNFFBRFy92qIrs5yQqNtAA78/yqN+ZkW3gQrIcbpD9/8AwIoooJHeaft5tboMYwxCupAOfcVaNiv2tnSRklUDOOjA9/rRRQB//9k='); realCarpet.wrapS = realCarpet.wrapT = THREE.RepeatWrapping; realCarpet.repeat.set(7,7); realCarpet.colorSpace = THREE.SRGBColorSpace;
 function carpetTex() { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'); g.fillStyle = '#cbbd9f'; g.fillRect(0, 0, 128, 128); for (let i = 0; i < 2600; i++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '255,250,235' : '90,75,55'},${Math.random() * 0.12})`; g.fillRect(Math.random() * 128, Math.random() * 128, 1.5, 1.5); } const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(5, 5); t.colorSpace = THREE.SRGBColorSpace; return t; }
 
 function buildRoom() {
-  roomGroup.clear(); walls = []; const R = state.room; normWin(R);
+  roomGroup.clear(); walls = []; const R = state.room; EDGE_CACHE.delete(R); ZONE_CACHE.delete(R); normWin(R);
   const shape = new THREE.Shape(R.poly.map(([x, z]) => new THREE.Vector2(x, -z)));
-  const floor = new THREE.Mesh(new THREE.ShapeGeometry(shape), STD({ map: carpetTex(), roughness: 1 })); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; roomGroup.add(floor);
+  const floor = new THREE.Mesh(new THREE.ShapeGeometry(shape), STD({ map: carpetTex(), roughness: 1 })); floorMesh = floor; if(realLook) floor.material.map=realCarpet; floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; roomGroup.add(floor);
   heatCanvas = document.createElement('canvas'); heatCanvas.width = heatCanvas.height = 48; heatTex = new THREE.CanvasTexture(heatCanvas); heatTex.colorSpace = THREE.SRGBColorSpace;
   const B = bounds(R), hg = new THREE.ShapeGeometry(shape); const uv = hg.attributes.uv, pos = hg.attributes.position;
   for (let i = 0; i < uv.count; i++) uv.setXY(i, (pos.getX(i) - B.x0) / (B.x1 - B.x0), 1 - (-pos.getY(i) - B.z0) / (B.z1 - B.z0));
@@ -246,12 +310,17 @@ function buildRoom() {
     holes.sort((a, b) => a.t0 - b.t0);
     const piece = (t0, t1, y0, y1) => { if (t1 - t0 < 0.005 || y1 - y0 < 0.005) return; for (const [ya, yb, m] of [[y0, Math.min(y1, 0.9), wainMat], [Math.max(y0, 0.9), y1, wallMat]]) { if (yb - ya < 0.005) continue; const b = new THREE.Mesh(new THREE.BoxGeometry(t1 - t0, yb - ya, T), m); b.position.set((t0 + t1) / 2, (ya + yb) / 2, 0); b.receiveShadow = true; g.add(b); } };
     let t = -T / 2; for (const hl of holes) { piece(t, hl.t0, 0, R.h); piece(hl.t0, hl.t1, 0, hl.y0); piece(hl.t0, hl.t1, hl.y1, R.h); t = hl.t1; } piece(t, e.L + T / 2, 0, R.h);
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(e.L, 0.03, T + 0.02), wainMat); rail.position.set(e.L / 2, 0.9, 0); g.add(rail);
+    let rt=0; for(const hole of [...holes.filter((h)=>h.y0<0.92),{t0:e.L,t1:e.L}]) { if(hole.t0>rt) {const rail=new THREE.Mesh(new THREE.BoxGeometry(hole.t0-rt,0.03,T+0.02),wainMat);rail.position.set((rt+hole.t0)/2,0.9,0);g.add(rail);}rt=hole.t1;}
     for (const hl of holes) {
       if (hl.win) { const glass = new THREE.Mesh(new THREE.PlaneGeometry(hl.t1 - hl.t0, hl.y1 - hl.y0), new THREE.MeshBasicMaterial({ color: 0xcfe8ff })); glass.position.set((hl.t0 + hl.t1) / 2, (hl.y0 + hl.y1) / 2, -T / 2 + 0.01); glass.rotation.y = Math.PI * 0; g.add(glass);
         const frame = STD({ color: 0xf4f1ea, roughness: 0.5 }); for (const k of [0.5]) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.03, hl.y1 - hl.y0, 0.04), frame); m.position.set(hl.t0 + (hl.t1 - hl.t0) * k, (hl.y0 + hl.y1) / 2, 0); g.add(m); } const mm = new THREE.Mesh(new THREE.BoxGeometry(hl.t1 - hl.t0, 0.03, 0.04), frame); mm.position.set((hl.t0 + hl.t1) / 2, (hl.y0 + hl.y1) / 2, 0); g.add(mm);
         const cur = STD({ color: 0x4a2422, roughness: 1 }); for (const side of [hl.t0 - 0.12, hl.t1 + 0.12]) { const c = new THREE.Mesh(new THREE.BoxGeometry(0.22, R.h - 0.35, 0.05), cur); c.position.set(side, (R.h - 0.35) / 2 + 0.15, T / 2 + 0.06); g.add(c); } }
-      if (hl.door) { const dark = new THREE.Mesh(new THREE.PlaneGeometry(hl.t1 - hl.t0, hl.y1), new THREE.MeshBasicMaterial({ color: 0x2a221a })); dark.position.set((hl.t0 + hl.t1) / 2, hl.y1 / 2, -T / 2 - 0.3); g.add(dark); }
+      if (hl.door) { const dark = new THREE.Mesh(new THREE.PlaneGeometry(hl.t1 - hl.t0, hl.y1), new THREE.MeshBasicMaterial({ color: 0x2a221a })); dark.position.set((hl.t0 + hl.t1) / 2, hl.y1 / 2, -T / 2 - 0.3); g.add(dark);
+        const radius=(hl.t1-hl.t0)/2, cx=(hl.t0+hl.t1)/2, spring=hl.y1-radius;
+        const sp=new THREE.Shape();sp.moveTo(hl.t0,hl.y1);sp.lineTo(hl.t1,hl.y1);sp.lineTo(hl.t1,spring);
+        for(let k=0;k<=32;k++) {const a=k/32*Math.PI;sp.lineTo(cx+radius*Math.cos(a),spring+radius*Math.sin(a));}sp.closePath();
+        const arch=new THREE.Mesh(new THREE.ExtrudeGeometry(sp,{depth:T,bevelEnabled:false}),wallMat);arch.position.z=-T/2;g.add(arch);
+      }
     }
     g.userData = { e }; roomGroup.add(g); walls.push(g);
   });
@@ -284,7 +353,7 @@ function buildItemMesh(it) {
     const crown = add(boxMesh(it.w * 0.9, 0.08, it.d * 0.8, wood)); crown.position.y = it.h + 0.04; crown.position.z = -it.d * 0.08;
     const glass = add(new THREE.Mesh(new THREE.PlaneGeometry(it.w * 0.8, it.h * 0.42), new THREE.MeshPhysicalMaterial({ color: 0xaab8b8, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.4 }))); glass.position.set(0, it.h * 0.72, it.d * 0.31 + 0.003);
     for (const y of [0.6, 0.8]) { const shelf = add(boxMesh(it.w * 0.84, 0.015, it.d * 0.6, STD({ color: 0xe8e2d6 }))); shelf.position.set(0, it.h * y, -it.d * 0.08); }
-  } else if (it.kind === 'table' || it.kind === 'glass') {
+  } else if (it.kind === 'table' || it.kind === 'glass' || it.kind === 'stand') {
     const glass = it.kind === 'glass';
     const top = add(new THREE.Mesh(new THREE.BoxGeometry(it.w, glass ? 0.012 : 0.045, it.d), glass ? new THREE.MeshPhysicalMaterial({ color: 0xcde8e2, roughness: 0.04, transparent: true, opacity: 0.35, metalness: 0.1 }) : STD({ color: 0x241913, roughness: 0.18, metalness: 0.15 })));
     top.position.y = it.h - (glass ? 0.006 : 0.022); top.castShadow = !glass;
@@ -300,15 +369,16 @@ function buildItemMesh(it) {
     const pool = add(new THREE.Mesh(new THREE.CircleGeometry(s.radius, 40), new THREE.MeshBasicMaterial({ color: s.color, transparent: true, opacity: 0.07, depthWrite: false }))); pool.rotation.x = -Math.PI / 2; pool.position.y = 0.006; pool.raycast = () => {}; pool.castShadow = false;
   } else if (it.kind === 'plant') {
     const pot = createPot({ style: it.pot || 'dark_plastic', diameter: it.potD, height: it.potH, width: it.box ? it.w : undefined, depth: it.box ? it.d : undefined, seed: seedOf(it.id) });
-    add(pot.group); g.userData.soilY = pot.soilY;
+    add(pot.group); pot.group.visible = !realLook; g.userData.soilY = pot.soilY;
     const ring = new THREE.Mesh(it.box ? new THREE.RingGeometry(0.01, 0.02, 4) : new THREE.RingGeometry(it.w / 2 + 0.01, it.w / 2 + 0.03, 40), new THREE.MeshBasicMaterial({ color: 0x8fd18a, transparent: true, opacity: 0.9, depthWrite: false }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.008; ring.raycast = () => {}; g.add(ring); g.userData.ring = ring;
-    const holder = new THREE.Group(); holder.position.y = pot.soilY; g.add(holder); g.userData.holder = holder;
-    loadFamily(PLANT_META[it.id]?.approved === false ? null : it.family).then((mod) => {
-      if (mod && mod.createPlant) { try { const m = mod.createPlant({ height: it.height, spread: Math.max(it.w, it.potD * 1.6), potDiameter: it.potD, width: it.box ? it.w : undefined, depth: it.box ? it.d : undefined, seed: seedOf(it.id) }); add(m); holder.add(m); return; } catch (e) { console.warn('model', it.family, e); } }
-      const tex = PLANT_TEX[it.src]; if (!tex) return; const a = tex.image.width / tex.image.height, H = it.height + it.potH * 0.2;
+    const holder = new THREE.Group(); holder.position.y = realLook ? 0 : pot.soilY; g.add(holder); g.userData.holder = holder;
+    const photoMode = realLook;
+    loadFamily(realLook || PLANT_META[it.id]?.approved === false ? null : it.family).then((mod) => {
+      if (!photoMode && mod && mod.createPlant) { try { const m = mod.createPlant({ height: it.height, spread: Math.max(it.w, it.potD * 1.6), potDiameter: it.potD, width: it.box ? it.w : undefined, depth: it.box ? it.d : undefined, seed: seedOf(it.id) }); add(m); holder.add(m); return; } catch (e) { console.warn('model', it.family, e); } }
+      const tex = PLANT_TEX[it.src]; if (!tex) return; const a = tex.image.width / tex.image.height, H = photoMode ? it.h : it.height + it.potH * 0.2;
       const spr = new THREE.Mesh(new THREE.PlaneGeometry(H * a, H), new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1 }));
-      spr.position.y = H / 2 - it.potH * 0.15; spr.userData.id = it.id; holder.add(spr); g.userData.billboard = spr;
+      spr.position.y = H / 2 - (photoMode ? 0 : it.potH * 0.15); spr.userData.id = it.id; holder.add(spr); g.userData.billboard = spr;
     });
   }
   return g;
@@ -350,17 +420,19 @@ let mode = 'explore', view = 'overview', showLight = false, selected = null;
 const VIEWS = { overview: ICON.cube, top: ICON.top, eye: ICON.eye };
 function setView(v = view) {
   view = v; const R = state.room, c = centroid(R), B = bounds(R);
-  if (v === 'top') { camera.position.set(c[0], 7.4, c[1] + 0.01); controls.target.set(c[0], 0, c[1]); }
+  if (v === 'top') { const fit = R.h + Math.max((B.x1-B.x0)/camera.aspect, B.z1-B.z0) / (2*Math.tan(THREE.MathUtils.degToRad(camera.fov/2))) * 1.12; camera.position.set(c[0], Math.max(7.4,fit), c[1] + 0.01); controls.target.set(c[0], 0, c[1]); }
   else if (v === 'eye') { const w = R.window, p = onEdge(R, w.edge, (w.t0 + w.t1) / 2); camera.position.set(B.x1 - 0.5, 1.55, B.z1 - 0.5); controls.target.set(p[0] + 0.6, 0.9, p[1]); }
   else { camera.position.set(B.x1 + 2.4, 3.9, B.z1 + 2.8); controls.target.set(c[0], 0.5, c[1]); }
+  $('#planCompass').classList.toggle('hidden', v !== 'top');
   $('#bView').innerHTML = VIEWS[v]; controls.update();
 }
 function setMode(m) {
-  mode = m; document.querySelectorAll('#mode .z-seg__item').forEach((b) => b.classList.toggle('is-active', b.dataset.mode === m));
+  mode = m; document.body.dataset.mode = m; document.querySelectorAll('#mode .z-seg__item').forEach((b) => b.classList.toggle('is-active', b.dataset.mode === m));
   $('#modeHint').textContent = m === 'edit' ? 'EDIT · drag to move · tap to edit' : 'EXPLORE · everything is locked · drag to look';
   closeSheet(); selected = null; drawDock(); setView(m === 'edit' ? 'top' : 'overview'); syncMeshes();
 }
 document.querySelectorAll('#mode .z-seg__item').forEach((b) => b.onclick = () => setMode(b.dataset.mode));
+$('#bReal').onclick = () => setRealLook(!realLook);
 $('#bView').onclick = () => { const order = ['overview', 'top', 'eye']; setView(order[(order.indexOf(view) + 1) % 3]); };
 $('#bLight').innerHTML = ICON.sun; $('#bFridge').innerHTML = ICON.fridge;
 $('#bLight').onclick = () => { showLight = !showLight; $('#bLight').setAttribute('aria-pressed', showLight); heatMesh.visible = showLight; drawHeat(); syncMeshes(); };
@@ -434,15 +506,31 @@ function stripState() { return { room: state.room, items: state.items.map(strip)
 
 // ───────── sheet & dock ─────────
 let openPanel = null;
-function openSheet(name, html) { openPanel = name; $('#sheetBody').innerHTML = html; const s = $('#sheet'); s.classList.remove('hidden'); s.scrollTop = 0; document.querySelectorAll('#dock button').forEach((b) => b.classList.toggle('on', b.dataset.panel === name)); }
+function openSheet(name, html) { openPanel = name; $('#sheetBody').innerHTML = html; const s = $('#sheet'); s.classList.remove('hidden'); s.scrollTop = 0; document.querySelectorAll('#dock button').forEach((b) => b.classList.toggle('on', b.dataset.panel === (HUB_KEYS.has(name) ? 'live' : name === 'layouts' ? 'suggest' : name))); }
 function closeSheet() { openPanel = null; $('#sheet').classList.add('hidden'); document.querySelectorAll('#dock button').forEach((b) => b.classList.remove('on')); stopPolls(); }
-const DOCK = { explore: [['suggest', 'Suggest', ICON.sparkle], ['real', 'Real', ICON.camera], ['scan', 'Scan', ICON.scan], ['layouts', 'Layouts', ICON.layers], ['chat', 'Hermes', ICON.chat]],
-  edit: [['items', 'Items', ICON.leaf], ['suggest', 'Suggest', ICON.sparkle], ['layouts', 'Layouts', ICON.layers], ['scan', 'Scan', ICON.scan], ['chat', 'Hermes', ICON.chat]] };
-const EXTRA_DOCK = []; // [{key,label,icon,modes:['explore','edit']}] added by modules
-function drawDock() { const list = [...DOCK[mode], ...EXTRA_DOCK.filter((d) => d.modes.includes(mode)).map((d) => [d.key, d.label, d.icon])]; $('#dock').innerHTML = list.map(([k, l, ic]) => `<button data-panel="${k}" aria-label="${l}">${ic}<span>${l}</span></button>`).join(''); document.querySelectorAll('#dock button').forEach((b) => b.onclick = () => { if (openPanel === b.dataset.panel) return closeSheet(); stopPolls(); PANELS[b.dataset.panel](); }); }
+const HUB_KEYS = new Set(['ar', 'voice', 'chat', 'scan', 'scan_live']);
+const HUB_ITEMS = new Map();
+const DOCK = { explore: [['suggest', 'Suggest', ICON.sparkle], ['live', 'Live', ICON.chat]],
+  edit: [['items', 'Items', ICON.leaf], ['suggest', 'Suggest', ICON.sparkle], ['live', 'Live', ICON.chat]] };
+const EXTRA_DOCK = [];
+function hubOpen(key) { stopPolls(); const item = HUB_ITEMS.get(key); (item?.open || PANELS[key])?.(); }
+function addHubItem(d) { HUB_ITEMS.set(d.key, { ...d }); if (d.open) PANELS[d.key] = d.open; if (openPanel === 'live') PANELS.live(); }
+function drawDock() {
+  const list = [...DOCK[mode], ...EXTRA_DOCK.filter((d) => d.modes.includes(mode)).sort((a,b)=>({zen:0,almanac:1}[a.key] ?? 2)-({zen:0,almanac:1}[b.key] ?? 2)).map((d) => [d.key, d.label, d.icon])];
+  $('#dock').innerHTML = list.map(([k, l, ic]) => `<button data-panel="${k}" aria-label="${l}">${ic}<span>${l}</span></button>`).join('');
+  document.querySelectorAll('#dock button').forEach((b) => b.onclick = () => { if (openPanel === b.dataset.panel) return closeSheet(); stopPolls(); PANELS[b.dataset.panel]?.(); });
+}
+function hubToolbar() {
+  const scan = HUB_ITEMS.has('scan_live') || PANELS.scan_live ? 'scan_live' : 'scan';
+  return `<div class="hub-tools"><button class="btn" id="hubTalk" aria-pressed="${!!window.GR?.voice?.on}">${ICON.lamp}${window.GR?.voice?.on ? 'Stop talking' : 'Talk'}</button><button class="btn" data-panel="voice">Voice options</button><button class="btn" data-panel="ar">${ICON.cube}AR measure</button><button class="btn" data-panel="${scan}">${ICON.scan}Room scan</button>${[...HUB_ITEMS.values()].filter((d)=>!HUB_KEYS.has(d.key)).map((d)=>`<button class="btn" data-panel="${esc(d.key)}">${d.icon || ''}${esc(d.label)}</button>`).join('')}</div>`;
+}
+function wireHub() {
+  $('#sheetBody').querySelectorAll('.hub-tools [data-panel]').forEach((b) => b.onclick = () => hubOpen(b.dataset.panel));
+  $('#hubTalk').onclick = async () => { const v = window.GR?.voice; if (!v) return toast('Voice is still loading'); if (v.on) v.stop(); else { v.setMode('talk'); await v.start(); } const b=$('#hubTalk'); if(b) { b.setAttribute('aria-pressed',v.on); b.innerHTML=ICON.lamp+(v.on?'Stop talking':'Talk'); } };
+}
 
 function numRow(label, key, val) { return `<div class="row"><label class="micro">${label}</label><input type="number" inputmode="decimal" step="0.5" data-k="${key}" value="${val}"><span class="unit">in</span></div>`; }
-function iconFor(it) { return { fridge: ICON.fridge, china: ICON.layers, table: ICON.table, glass: ICON.table, led: ICON.panel, stake: ICON.sun, lamp5: ICON.lamp, ring: ICON.sun }[it.kind] || ICON.leaf; }
+function iconFor(it) { return { fridge: ICON.fridge, china: ICON.layers, table: ICON.table, glass: ICON.table, stand: ICON.table, led: ICON.panel, stake: ICON.sun, lamp5: ICON.lamp, ring: ICON.sun }[it.kind] || ICON.leaf; }
 
 function openItem(id) {
   const it = state.items.find((i) => i.id === id); if (!it) return;
@@ -462,6 +550,7 @@ function openItem(id) {
     if (it.kind === 'stake') h += `<div class="row"><label class="micro">In plant</label><select data-k="attach"><option value="">(free)</option>${state.items.filter((p) => p.kind === 'plant').map((p) => `<option value="${p.id}" ${p.id === it.attach ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>`;
   }
   h += `<div class="row">${extra}</div><div class="row"><button class="btn" id="iRot">${ICON.rotate}Rotate</button><button class="btn ${it.locked ? 'on' : ''}" id="iLock">${it.locked ? ICON.lock + 'Locked' : ICON.unlock + 'Movable'}</button>${it.kind === 'plant' ? `<button class="btn" id="iDup">${ICON.copy}</button><button class="btn danger" id="iDel">${ICON.trash}</button>` : ''}</div>`;
+  if(it.kind === 'stand') h += `<button class="btn danger" id="iDel">${ICON.trash}Remove stand</button>`;
   openSheet('item', h); wireExtra();
   $('#sheetBody').querySelectorAll('[data-k]').forEach((el) => el.onchange = () => {
     const k = el.dataset.k; let v = el.value; if (el.type === 'number') { v = parseFloat(v) * IN; if (!(v > 0)) return; }
@@ -488,31 +577,39 @@ let suggestions = [], polls = [];
 function stopPolls() { polls.forEach(clearInterval); polls = []; }
 const PANELS = {
   suggest() {
-    openSheet('suggest', `<h3>Find <em>arrangements</em></h3><p class="sub">Keeps the fridge door and doorways clear and pulls plants toward the window. Plants can go on the tables.</p>
+    openSheet('suggest', `<h3>Find <em>arrangements</em></h3><p class="sub">Room to grow: spaced pots, a clear walking route and light matched to each plant.</p><div class="sheet-tabs"><button class="btn on" disabled>Suggest</button><button class="btn" data-panel="layouts">Saved layouts</button></div>
       <div class="row"><label class="micro">Window pull</label><input id="sW" type="range" min="0" max="0.7" step="0.05" value="${winWeight}"></div>
-      <div class="row"><label class="micro">Furniture</label><select id="sF"><option value="0">stays put</option><option value="1">may move (fridge stays)</option></select></div>
+      <div class="row"><label class="micro">Furniture</label><select id="sF"><option value="0">locked furniture stays</option><option value="1">all may move (fridge stays)</option></select></div>
       <div class="row"><button class="btn gold" id="sGo">${ICON.sparkle}Suggest 3</button></div><div class="cards" id="sOut"></div>`);
+    $('[data-panel=layouts]').onclick = () => PANELS.layouts();
     $('#sW').oninput = (e) => { winWeight = parseFloat(e.target.value); rescore(); };
-    $('#sGo').onclick = () => { $('#sOut').innerHTML = '<span class="micro">thinking…</span>'; setTimeout(() => {
-      const mf = $('#sF').value === '1', base = Math.floor(Math.random() * 1e6);
-      suggestions = [0, 1, 2].map((k) => optimize(state.items, state.room, { seed: base + k * 7919, moveFurniture: mf, winWeight })).sort((a, b) => b.score - a.score);
-      $('#sOut').innerHTML = suggestions.map((s, i) => { const n = s.warns.filter((w) => !w.startsWith('(soft)')).length; return `<div class="card"><img src="${miniMap(s.items)}"><b>${Math.round(s.score)}</b><span class="micro">LIGHT ${Math.round(s.lightSat * 100)}% · ${n ? n + ' ISSUE' + (n > 1 ? 'S' : '') : 'CLEAR'}</span><button class="btn" data-i="${i}">Use</button></div>`; }).join('');
-      $('#sOut').querySelectorAll('button').forEach((b) => b.onclick = () => { state.items = suggestions[+b.dataset.i].items.map(strip); rescore(); save(); toast('Applied — switch to Edit to tweak'); });
-    }, 30); };
+    $('#sGo').onclick = async () => {
+      const output = $('#sOut'), button = $('#sGo'), mf = $('#sF').value === '1', source = state.items.map(strip);
+      button.disabled = true; output.innerHTML = '<span class="micro">Packing spaced pots…</span>'; suggestions = [];
+      for (const seed of [1, 77, 7920]) {
+        await new Promise((r)=>setTimeout(r,100)); if(openPanel !== 'suggest' || !output.isConnected) break;
+        const proposal = await optimizeAsync(source, state.room, { seed, moveFurniture: mf, winWeight }); if(openPanel !== 'suggest' || !output.isConnected) break; suggestions.push(proposal); suggestions.sort((a,b)=>b.score-a.score);
+        output.innerHTML = suggestions.map((s,i)=>{ const n=s.warns.filter((w)=>!w.startsWith('(soft)')).length; return `<div class="card"><img src="${miniMap(s.items)}"><b>${Math.round(s.score)}</b><span class="micro">LIGHT ${Math.round(s.lightSat*100)}% · ${n ? n+' ISSUES' : 'CLEAR'}</span><button class="btn" data-i="${i}" ${n ? 'disabled' : ''}>Use</button></div>`; }).join('');
+        output.querySelectorAll('button').forEach((b)=>b.onclick=()=>{ const proposal=suggestions[+b.dataset.i]; if(proposal.warns.some((w)=>!w.startsWith('(soft)'))) return toast('Not safe to apply yet'); state.items=proposal.items.map(strip);rescore();save();toast('Applied — switch to Edit to tweak'); });
+      }
+      button.disabled=false;
+    };
   },
   items() {
     const tiles = state.items.map((it) => `<div class="tile ${it.id === selected ? 'sel' : ''}" data-id="${it.id}">${it.locked ? `<span class="lock">${ICON.lock}</span>` : ''}${it.src ? `<img src="${it.src}">` : `<div class="ico">${iconFor(it)}</div>`}${esc(it.name)}</div>`).join('');
-    openSheet('items', `<h3>Items <em>${state.items.length}</em></h3><p class="sub">Tap to edit sizes in inches. Locked items don't move when you drag or suggest.</p><div class="grid">${tiles}</div><div class="row"><button class="btn" id="iReset">Reset to photo inventory</button></div>`);
+    openSheet('items', `<h3>Items <em>${state.items.length}</em></h3><p class="sub">Tap to edit sizes in inches. Locked items don't move when you drag or suggest.</p><div class="grid">${tiles}</div><div class="row"><button class="btn" id="iStand">Add my plant stand</button><button class="btn" id="iReset">Reset to photo inventory</button></div>`);
+    $('#iStand').onclick = () => { const id='stand_'+Date.now().toString(36), B=bounds(state.room); state.items.push({id,kind:'stand',name:'Plant stand (measure me)',w:0.36,d:0.36,h:0.65,x:B.x0+0.5,z:B.z0+0.5,rot:0,guess:true});syncMeshes();rescore();save();selected=id;openItem(id);toast('Estimated stand — enter your actual dimensions'); };
     $('#sheetBody').querySelectorAll('.tile').forEach((t) => t.onclick = () => { selected = t.dataset.id; drawSelection(); openItem(selected); });
     $('#iReset').onclick = async () => { if (!confirm('Reset all items to the starting layout?')) return; state.items = defaultItems(await loadPlants()); syncMeshes(true); rescore(); save(); };
   },
   async layouts() {
     let list = []; try { list = await api('/api/layouts'); } catch (e) { list = JSON.parse(localStorage.getItem('gr_layouts') || '[]'); }
     const persist = () => { localStorage.setItem('gr_layouts', JSON.stringify(list)); return api('/api/layouts', { method: 'PUT', body: JSON.stringify(list) }).catch(() => {}); };
-    const render = () => { openSheet('layouts', `<h3>Saved <em>layouts</em></h3><div class="row"><input id="lName" type="text" placeholder="Name this layout" style="flex:1"><button class="btn gold" id="lSave">Save</button></div>
+    const render = () => { openSheet('layouts', `<h3>Saved <em>layouts</em></h3><div class="sheet-tabs"><button class="btn" id="backSuggest">Suggest</button><button class="btn on" disabled>Saved layouts</button></div><div class="row"><input id="lName" type="text" placeholder="Name this layout" style="flex:1"><button class="btn gold" id="lSave">Save</button></div>
       <div class="cards">${list.map((l, i) => `<div class="card"><img src="${miniMap(l.items)}"><b>${Math.round(l.score ?? 0)}</b><span class="micro">${esc(l.name)}</span><div class="row"><button class="btn" data-load="${i}">Load</button><button class="btn danger" data-del="${i}">${ICON.trash}</button></div></div>`).join('') || '<span class="micro">NONE YET</span>'}</div>`);
-      $('#lSave').onclick = async () => { list.unshift({ name: $('#lName').value || new Date().toLocaleString(), score: lastEval?.score, items: stripState().items, ts: Date.now() }); await persist(); render(); toast('Saved'); };
-      $('#sheetBody').querySelectorAll('[data-load]').forEach((b) => b.onclick = () => { state.items = list[+b.dataset.load].items.map((i) => ({ ...i })); syncMeshes(true); rescore(); save(); toast('Loaded'); });
+      $('#backSuggest').onclick = () => PANELS.suggest();
+      $('#lSave').onclick = async () => { list.unshift({ name: $('#lName').value || new Date().toLocaleString(), score: lastEval?.score, room: state.room, items: stripState().items, ts: Date.now() }); await persist(); render(); toast('Saved'); };
+      $('#sheetBody').querySelectorAll('[data-load]').forEach((b) => b.onclick = () => { const plan = migratePlan(list[+b.dataset.load]); if(plan.room) {state.room=plan.room;buildRoom();} state.items = plan.items.map((i) => ({ ...i })); syncMeshes(true); rescore(); save(); toast('Loaded'); });
       $('#sheetBody').querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => { list.splice(+b.dataset.del, 1); await persist(); render(); }); };
     render();
   },
@@ -550,11 +647,13 @@ const PANELS = {
       const r = await api(`/api/scan/${id}/done`, { method: 'POST', body: JSON.stringify({ note: $('#scNote').value }) });
       pending = []; toast(r.chat ? 'Sent — Hermes is rebuilding the layout' : 'Uploaded; chat offline', 4000); PANELS.scan();
     };
-    $('#sheetBody').querySelectorAll('[data-imp]').forEach((b) => b.onclick = () => { const L = ready[+b.dataset.imp].layout; if (!confirm('Replace the current layout with this scan? (Save it in Layouts first if you want to keep it.)')) return; if (L.room && L.room.poly) state.room = L.room; state.items = L.items.map((i) => ({ ...i })); buildRoom(); syncMeshes(true); setView(); rescore(); save(); toast('Imported scan layout'); });
+    $('#sheetBody').querySelectorAll('[data-imp]').forEach((b) => b.onclick = () => { const L = migratePlan(ready[+b.dataset.imp].layout); if (!confirm('Replace the current layout with this scan? (Save it in Layouts first if you want to keep it.)')) return; if (L.room && L.room.poly) state.room = L.room; state.items = L.items.map((i) => ({ ...i })); buildRoom(); syncMeshes(true); setView(); rescore(); save(); toast('Imported scan layout'); });
     polls.push(setInterval(() => { if (openPanel === 'scan') api('/api/scans').then((n) => { if (n.filter((s) => s.layout).length !== ready.length) PANELS.scan(); }).catch(() => {}); }, 8000));
   },
-  chat() {
-    openSheet('chat', `<h3>Hermes</h3><p class="micro" id="cState"></p><div class="chat" id="cLog"></div><textarea id="cIn" placeholder="Message this Hermes chat…"></textarea><div class="row"><button class="btn gold" id="cSend">${ICON.send}Send</button><label class="micro"><input type="checkbox" id="cLay"> attach layout</label></div>`);
+  live() { PANELS.chat(true); },
+  chat(inHub = false) {
+    openSheet(inHub ? 'live' : 'chat', `${inHub ? '<h3>Live <em>room</em></h3><p class="sub">Talk, measure, scan and ask Hermes.</p>' + hubToolbar() : '<button class="btn" id="backLive">← Live</button>'}<h3>Hermes</h3><p class="micro" id="cState"></p><div class="chat" id="cLog"></div><textarea id="cIn" placeholder="Message this Hermes chat…"></textarea><div class="row"><button class="btn gold" id="cSend">${ICON.send}Send</button><label class="micro"><input type="checkbox" id="cLay"> attach layout</label></div>`);
+    if (inHub) wireHub(); else $('#backLive').onclick = () => PANELS.live();
     lastMsgId = 0; pollChat(); polls.push(setInterval(pollChat, 4000));
     $('#cSend').onclick = async () => { let text = $('#cIn').value.trim(); if (!text) return; if ($('#cLay').checked) text += ' | layout: ' + state.items.map((i) => `${i.name}@(${toIn(i.x)}in,${toIn(i.z)}in${i._on ? ' on ' + i._on : ''})`).join('; ').slice(0, 2500);
       $('#cSend').disabled = true; try { const r = await api('/api/chat', { method: 'POST', body: JSON.stringify({ text }) }); if (!r.ok) toast(r.detail, 4000); else { $('#cIn').value = ''; toast('Sent'); } } finally { $('#cSend').disabled = false; } };
@@ -573,10 +672,24 @@ async function pollChat() {
   } catch (e) { const s = $('#cState'); if (s) s.textContent = e.message; }
 }
 
+// Real is a scene filter, not a render-gallery dock. Aligned scans may override it via GR.setRealScene.
+let realScene = null;
+function setRealLook(on) {
+  realLook = !!on; if(floorMesh) { floorMesh.material.map = realLook ? realCarpet : carpetTex(); floorMesh.material.needsUpdate = true; } $('#bReal').setAttribute('aria-pressed', realLook);
+  if (realScene) { realScene.visible = realLook; roomGroup.visible = itemGroup.visible = !realLook; }
+  else { roomGroup.visible = itemGroup.visible = true; syncMeshes(true); }
+  toast(realLook ? (realScene ? 'Real · aligned room scan' : 'Real · your plant photo cutouts · diffuse north light') : 'Procedural room');
+}
 // ───────── boot ─────────
 async function loadPlants() {
   const [plants, models] = await Promise.all([fetch('plants.json').then((r) => r.json()), fetch('plant_models.json').then((r) => r.json()).catch(() => ({}))]);
   return plants.map((p) => ({ ...p, ...(models[p.id] || {}) }));
+}
+function migratePlan(saved) {
+  if (!saved?.room || saved.room.v !== 2) return saved;
+  const D = Math.max(...saved.room.poly.map((p) => p[1]));
+  return { ...saved, room: { ...saved.room, v: 3, poly: saved.room.poly.map(([x,z]) => [D-z,x]), edgeNames: [...DEFAULT_ROOM.edgeNames], window: { ...saved.room.window, facing: 'north' } },
+    items: saved.items.map((it) => ({ ...it, x: D-it.z, z: it.x, rot: ((it.rot || 0)+1)%4 })) };
 }
 async function boot() {
   resize(); drawDock();
@@ -584,8 +697,9 @@ async function boot() {
   await Promise.all(plants.map((p) => new Promise((res) => texLoader.load(p.src, (t) => { t.colorSpace = THREE.SRGBColorSpace; PLANT_TEX[p.src] = t; res(); }, undefined, res))));
   let saved = null; try { saved = await api('/api/state'); } catch (e) { toast(e.message, 5000); }
   if (!saved || !saved.items) { try { saved = JSON.parse(localStorage.getItem('gr_state')); } catch (e) {} }
+  saved = migratePlan(saved);
   if (saved && saved.items && saved.items.length && saved.room && saved.room.v === DEFAULT_ROOM.v) state = { room: saved.room, items: saved.items.map((i) => (i.kind === 'plant' ? { ...i, family: i.family || PLANT_META[i.id]?.family, pot: i.pot || PLANT_META[i.id]?.pot } : i)), fridgeOpen: false };
-  else { state.items = defaultItems(plants); normWin(state.room); state.items = optimize(state.items, state.room, { seed: 7, winWeight }).items.map(strip); save(); }
+  else { state.items = defaultItems(plants); normWin(state.room); state.items = (await optimizeAsync(state.items, state.room, { seed: 7, winWeight })).items.map(strip); save(); }
   buildRoom(); setMode('explore'); syncMeshes(true); rescore(); frame();
   const GR = window.GR = {
     THREE, scene, camera, renderer, controls, canvas, ICON, api, toast, esc, KEY, IN, CM, FT,
@@ -599,14 +713,16 @@ async function boot() {
     rotate(id) { const it = GR.itemById(id); if (!it) return false; it.rot = (it.rot + 1) % 4; rescore(); save(); return true; },
     setFridge(open) { state.fridgeOpen = !!open; $('#bFridge').setAttribute('aria-pressed', state.fridgeOpen); syncMeshes(); },
     setLight(on) { showLight = !!on; $('#bLight').setAttribute('aria-pressed', showLight); heatMesh.visible = showLight; drawHeat(); syncMeshes(); },
-    suggestApply(opts = {}) { const r = optimize(state.items, state.room, { seed: Math.floor(Math.random() * 1e6), winWeight, ...opts }); state.items = r.items.map(strip); rescore(); save(); return r; },
+    suggestApply(opts = {}) { const r = optimize(state.items, state.room, { seed: Math.floor(Math.random() * 1e6), winWeight, ...opts }); if(!r.overlaps && !r.spacingViolations && !r.warns.some((w)=>!w.startsWith('(soft)'))) { state.items = r.items.map(strip); rescore(); save(); } return r; },
     saveState: save, rescore, rebuildItem(id) { const g = meshes.get(id); if (g) { itemGroup.remove(g); meshes.delete(id); } syncMeshes(); },
-    addDock(d) { EXTRA_DOCK.push({ modes: ['explore', 'edit'], ...d }); PANELS[d.key] = d.open; drawDock(); },
+    addHubItem,
+    addDock(d) { if (HUB_KEYS.has(d.key)) return addHubItem(d); const old = EXTRA_DOCK.findIndex((x) => x.key === d.key); if(old >= 0) EXTRA_DOCK.splice(old, 1); EXTRA_DOCK.push({ modes: ['explore', 'edit'], ...d }); PANELS[d.key] = d.open; drawDock(); },
+    setRealLook, get realLook() { return realLook; }, setRealScene(object) { if(realScene) scene.remove(realScene); realScene=object; if(object) scene.add(object); setRealLook(realLook); },
     addPanel(key, fn) { PANELS[key] = fn; }, addItemAction(a) { ITEM_ACTIONS.push(a); }, onFrame(fn) { FRAME_HOOKS.push(fn); },
     project(x, z, y = 0.15) { const v = new THREE.Vector3(x, y, z).project(camera); const r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; },
   };
   for (const m of ['zen', 'history', 'ar', 'voice', 'almanac', 'replay', 'scan_live']) import(`./modules/${m}.js`).then((mod) => mod.init && mod.init(GR)).catch((e) => { if (!String(e).includes('Failed to fetch')) console.warn('module', m, e); });
-  window.__garden = { get state() { return state; }, evaluate, optimize, rescore, setMode, setView, get mode() { return mode; },
+  window.__garden = { get state() { return state; }, evaluate, optimize, optimizeAsync, migratePlan, miniMap, potGap, breathingRoom, clearanceZones, rescore, setMode, setView, get mode() { return mode; },
     project(x, z, y = 0.15) { const v = new THREE.Vector3(x, y, z).project(camera); const r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; } };
 }
 boot().catch((e) => { console.error(e); toast('Boot failed: ' + e.message, 8000); });

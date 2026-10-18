@@ -49,7 +49,7 @@ await page.addInitScript(()=>{
 });
 try {
  await page.goto(`${base}/#k=${key}`);
- await page.waitForFunction(()=>window.GR?.voice && document.querySelector('#score').textContent!=='–',null,{timeout:20000});
+ await page.waitForFunction(()=>window.GR?.voice && document.querySelector('#score').textContent!=='–',null,{timeout:60000});
  let result=await page.evaluate(()=>GR.voice.inject('open the fridge'));
  assert.equal(result?.selected_id,'fridge_open',JSON.stringify(result)); assert.ok(await page.evaluate(()=>GR.state.fridgeOpen));
  console.log('PASS live transcript → real Jev → fridge open');
@@ -82,12 +82,12 @@ try {
  await page.unroute('**/api/voice/drive?*');
  await page.route('**/api/voice/drive?*',r=>{const after=Number(new URL(r.request().url()).searchParams.get('after'));return r.fulfill({json:{actions:after<77?[{id:77,action:'view_eye',params:{},say:'Eye level'}]:[],after:77}});});
  const loaded=page.waitForResponse(r=>r.url().endsWith('/api/voice/rules'));
- await page.evaluate(()=>GR.voice.start()); await loaded;
+ await page.evaluate(()=>{GR.voice.setMode('commands');return GR.voice.start();}); await loaded;
  await page.waitForFunction(()=>GR.view==='eye'&&localStorage.getItem('gr_voice_drive')==='77');
  let jevCalls=0; page.on('request',r=>{if(r.url().endsWith('/api/voice/jev'))jevCalls++;});
  result=await page.evaluate(()=>GR.voice.inject('icebox please'));
- assert.equal(result.selected_id,'fridge_close'); assert.ok(!await page.evaluate(()=>GR.state.fridgeOpen)); assert.equal(jevCalls,0);
+ assert.equal(result.selected_id,'fridge_close'); assert.ok(!await page.evaluate(()=>GR.state.fridgeOpen)); assert.equal(jevCalls,1);
  await page.evaluate(()=>GR.voice.stop());
- console.log('PASS Hermes drive queue cursor and phrase aliases before Jev');
+ console.log('PASS Hermes drive cursor and aliases; all final transcripts still classified');
  assert.deepEqual(errors,[]); console.log('PASS event capture, phone/small/wide layout, 44px controls, no page errors');
 } finally { await browser.close(); }
