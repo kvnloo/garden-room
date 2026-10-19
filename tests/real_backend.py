@@ -1,5 +1,5 @@
-"""No network/GPU jobs: validate actual browser depth, metric fit and bounded fusion.
-Run after node tests/real_capture.mjs using the ComfyUI Python.
+"""No network/GPU jobs: capture validation, metric fit and compatibility fusion.
+Uses browser evidence when available, otherwise a disposable synthetic capture.
 """
 import base64
 import copy
@@ -14,6 +14,8 @@ from unittest.mock import patch
 import hashlib
 import numpy as np
 from plyfile import PlyData
+from PIL import Image
+import io
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -28,9 +30,25 @@ route=load('real_route',ROOT/'routes/real.py')
 lift=load('real_lift',ROOT/'tools/real_sharp.py')
 
 
+def capture_fixture():
+    path=Path(os.environ.get('REAL_CAPTURE_FIXTURE','$PRIVATE_DATA'))
+    if path.is_file():
+        return json.loads(path.read_text()) | {'explicit':True}
+    camera={'matrixWorld':np.eye(4).flatten(order='F').tolist(),'position':[0,0,0],
+            'quaternion':[0,0,0,1],'fov':62,'aspect':1}
+    def image_uri(fmt):
+        buffer=io.BytesIO();Image.new('RGB',(64,64)).save(buffer,fmt)
+        return 'data:image/'+fmt.lower()+';base64,'+base64.b64encode(buffer.getvalue()).decode()
+    return {'camera':camera,'explicit':True,'view':image_uri('JPEG'),'ids':image_uri('PNG'),
+            'objects':[{'id':'p01','kind':'plant','label':1}],'depth':{'width':64,'height':64,'encoding':'float32-le-meters-camera-z',
+                                  'data':base64.b64encode(np.full((64,64),2.5,dtype='<f4').tobytes()).decode()},
+            'layout':{'room':{'poly':[[0,0],[3,0],[3,3],[0,3]]},
+                      'items':[{'id':'p01','kind':'plant','x':1,'name':'Plant','src':'plants/p01.webp'}]}}
+
+
 class RealTests(unittest.TestCase):
     def test_browser_capture_validation_and_revision(self):
-        capture=json.loads((ROOT/'work/real-capture-test.json').read_text())
+        capture=capture_fixture()
         layout,camera,raw=route.validate(capture)
         self.assertEqual(len(raw),capture['depth']['width']*capture['depth']['height']*4)
         old=route.revision(layout)
@@ -44,7 +62,7 @@ class RealTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'visible'):route.validate(bad)
 
     def test_cache_immutable_capture_and_restart_resume(self):
-        capture=json.loads((ROOT/'work/real-capture-test.json').read_text())
+        capture=capture_fixture()
         class HTTP:
             def __init__(self,payload):self.payload=payload;self.responses=[]
             def body(self):return copy.deepcopy(self.payload)

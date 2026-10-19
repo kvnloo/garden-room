@@ -1,0 +1,444 @@
+{
+  "provenance": "Real OWLv2/PlantCV/appearance record, with explicitly INJECTED metric XR position and alignment for deterministic scene-import contract. Not physical sensor evidence.",
+  "target": {
+    "id": "p06",
+    "x": 0.9079022054719427,
+    "z": 3.368238072037728
+  },
+  "scan": {
+    "id": "aabbcc112233445566778899",
+    "createdAt": "2026-10-19T04:33:14.563394+00:00",
+    "state": "stopped",
+    "metric": true,
+    "alignment": {
+      "angle": 0.35,
+      "tx": 0.4,
+      "tz": 0.6,
+      "floor": 0
+    },
+    "detections": [
+      {
+        "id": "o1",
+        "label": "potted plant",
+        "views": 4,
+        "confidence": 0.493,
+        "box": [
+          245.056640625,
+          122.53678131103516,
+          343.01251220703125,
+          302.63775634765625
+        ],
+        "lastSeen": 2,
+        "plant": {
+          "method": "PlantCV LAB green mask + OpenCV colour",
+          "projectedLeafAreaPx": 9771,
+          "segmentationFraction": 0.554,
+          "warning": "Visible projected foliage, not total leaf area; lighting-dependent colour, not a diagnosis",
+          "widthPx": 98,
+          "heightPx": 178,
+          "excessGreen": 0.1981517843108871,
+          "yellowFraction": 0.434551223006857
+        },
+        "identity": {
+          "status": "unsure",
+          "id": null,
+          "candidates": [
+            {
+              "id": "p02",
+              "name": "Eggplant",
+              "appearanceSimilarity": 0.996,
+              "distanceM": null,
+              "score": 0.5976524233818054
+            },
+            {
+              "id": "p09",
+              "name": "Herb barrel",
+              "appearanceSimilarity": 0.978,
+              "distanceM": null,
+              "score": 0.5868885397911071
+            },
+            {
+              "id": "p16",
+              "name": "Ficus (ceramic)",
+              "appearanceSimilarity": 0.975,
+              "distanceM": null,
+              "score": 0.5850640654563903
+            },
+            {
+              "id": "p01",
+              "name": "Trailing plectranthus",
+              "appearanceSimilarity": 0.968,
+              "distanceM": null,
+              "score": 0.5805020928382874
+            },
+            {
+              "id": "p06",
+              "name": "Curry leaf (dark pot)",
+              "appearanceSimilarity": 0.944,
+              "distanceM": null,
+              "score": 0.5664470314979553
+            },
+            {
+              "id": "p05",
+              "name": "Chili (taupe wicker)",
+              "appearanceSimilarity": 0.944,
+              "distanceM": null,
+              "score": 0.5662374973297118
+            },
+            {
+              "id": "p04",
+              "name": "Pepper (grey wicker)",
+              "appearanceSimilarity": 0.941,
+              "distanceM": null,
+              "score": 0.5646684408187866
+            },
+            {
+              "id": "p25",
+              "name": "Holy basil (back pot)",
+              "appearanceSimilarity": 0.931,
+              "distanceM": null,
+              "score": 0.5583025217056274
+            },
+            {
+              "id": "p07",
+              "name": "Banana",
+              "appearanceSimilarity": 0.916,
+              "distanceM": null,
+              "score": 0.5494457244873047
+            },
+            {
+              "id": "p03",
+              "name": "Curry leaf (brown pot)",
+              "appearanceSimilarity": 0.898,
+              "distanceM": null,
+              "score": 0.5389291405677795
+            },
+            {
+              "id": "p12",
+              "name": "Curry leaf (dark pot 2)",
+              "appearanceSimilarity": 0.827,
+              "distanceM": null,
+              "score": 0.4960979104042053
+            },
+            {
+              "id": "p11",
+              "name": "Pepper (dark wicker)",
+              "appearanceSimilarity": 0.784,
+              "distanceM": null,
+              "score": 0.4702600121498108
+            },
+            {
+              "id": "p10",
+              "name": "Raised planter A (peppers)",
+              "appearanceSimilarity": 0.684,
+              "distanceM": null,
+              "score": 0.41029722690582277
+            },
+            {
+              "id": "p20",
+              "name": "Raised planter B",
+              "appearanceSimilarity": 0.684,
+              "distanceM": null,
+              "score": 0.41029722690582277
+            },
+            {
+              "id": "p17",
+              "name": "Seedlings (grey pot)",
+              "appearanceSimilarity": 0.682,
+              "distanceM": null,
+              "score": 0.40919147729873656
+            },
+            {
+              "id": "p08",
+              "name": "Aloe (painted ceramic)",
+              "appearanceSimilarity": 0.606,
+              "distanceM": null,
+              "score": 0.3635836958885193
+            },
+            {
+              "id": "p19",
+              "name": "Sprout (white pot)",
+              "appearanceSimilarity": 0.587,
+              "distanceM": null,
+              "score": 0.35221502780914304
+            },
+            {
+              "id": "p24",
+              "name": "Bushy herb",
+              "appearanceSimilarity": 0.585,
+              "distanceM": null,
+              "score": 0.35103335380554196
+            },
+            {
+              "id": "p18",
+              "name": "Seedling tray",
+              "appearanceSimilarity": 0.583,
+              "distanceM": null,
+              "score": 0.3497941017150879
+            },
+            {
+              "id": "p15",
+              "name": "Tiny planter",
+              "appearanceSimilarity": 0.53,
+              "distanceM": null,
+              "score": 0.31820690631866455
+            },
+            {
+              "id": "p14",
+              "name": "Small green pot 2",
+              "appearanceSimilarity": 0.356,
+              "distanceM": null,
+              "score": 0.2136352479457855
+            },
+            {
+              "id": "p13",
+              "name": "Small green pot 1",
+              "appearanceSimilarity": 0.35,
+              "distanceM": null,
+              "score": 0.20995820760726927
+            },
+            {
+              "id": "p21",
+              "name": "Seedlings (blue ceramic)",
+              "appearanceSimilarity": 0.318,
+              "distanceM": null,
+              "score": 0.1908985733985901
+            },
+            {
+              "id": "p23",
+              "name": "Tall leafy shrub",
+              "appearanceSimilarity": 0.136,
+              "distanceM": null,
+              "score": 0.0818490207195282
+            },
+            {
+              "id": "p22",
+              "name": "Tomato",
+              "appearanceSimilarity": 0.083,
+              "distanceM": null,
+              "score": 0.05004061907529831
+            }
+          ]
+        },
+        "metric": true,
+        "position": {
+          "x": 1.4263322380317882,
+          "y": 0.6,
+          "z": 2.426248754879361
+        }
+      }
+    ],
+    "observedDetections": [
+      {
+        "id": "o1",
+        "label": "potted plant",
+        "views": 4,
+        "confidence": 0.493,
+        "box": [
+          245.056640625,
+          122.53678131103516,
+          343.01251220703125,
+          302.63775634765625
+        ],
+        "lastSeen": 2,
+        "plant": {
+          "method": "PlantCV LAB green mask + OpenCV colour",
+          "projectedLeafAreaPx": 9771,
+          "segmentationFraction": 0.554,
+          "warning": "Visible projected foliage, not total leaf area; lighting-dependent colour, not a diagnosis",
+          "widthPx": 98,
+          "heightPx": 178,
+          "excessGreen": 0.1981517843108871,
+          "yellowFraction": 0.434551223006857
+        },
+        "identity": {
+          "status": "unsure",
+          "id": null,
+          "candidates": [
+            {
+              "id": "p02",
+              "name": "Eggplant",
+              "appearanceSimilarity": 0.996,
+              "distanceM": null,
+              "score": 0.5976524233818054
+            },
+            {
+              "id": "p09",
+              "name": "Herb barrel",
+              "appearanceSimilarity": 0.978,
+              "distanceM": null,
+              "score": 0.5868885397911071
+            },
+            {
+              "id": "p16",
+              "name": "Ficus (ceramic)",
+              "appearanceSimilarity": 0.975,
+              "distanceM": null,
+              "score": 0.5850640654563903
+            },
+            {
+              "id": "p01",
+              "name": "Trailing plectranthus",
+              "appearanceSimilarity": 0.968,
+              "distanceM": null,
+              "score": 0.5805020928382874
+            },
+            {
+              "id": "p06",
+              "name": "Curry leaf (dark pot)",
+              "appearanceSimilarity": 0.944,
+              "distanceM": null,
+              "score": 0.5664470314979553
+            },
+            {
+              "id": "p05",
+              "name": "Chili (taupe wicker)",
+              "appearanceSimilarity": 0.944,
+              "distanceM": null,
+              "score": 0.5662374973297118
+            },
+            {
+              "id": "p04",
+              "name": "Pepper (grey wicker)",
+              "appearanceSimilarity": 0.941,
+              "distanceM": null,
+              "score": 0.5646684408187866
+            },
+            {
+              "id": "p25",
+              "name": "Holy basil (back pot)",
+              "appearanceSimilarity": 0.931,
+              "distanceM": null,
+              "score": 0.5583025217056274
+            },
+            {
+              "id": "p07",
+              "name": "Banana",
+              "appearanceSimilarity": 0.916,
+              "distanceM": null,
+              "score": 0.5494457244873047
+            },
+            {
+              "id": "p03",
+              "name": "Curry leaf (brown pot)",
+              "appearanceSimilarity": 0.898,
+              "distanceM": null,
+              "score": 0.5389291405677795
+            },
+            {
+              "id": "p12",
+              "name": "Curry leaf (dark pot 2)",
+              "appearanceSimilarity": 0.827,
+              "distanceM": null,
+              "score": 0.4960979104042053
+            },
+            {
+              "id": "p11",
+              "name": "Pepper (dark wicker)",
+              "appearanceSimilarity": 0.784,
+              "distanceM": null,
+              "score": 0.4702600121498108
+            },
+            {
+              "id": "p10",
+              "name": "Raised planter A (peppers)",
+              "appearanceSimilarity": 0.684,
+              "distanceM": null,
+              "score": 0.41029722690582277
+            },
+            {
+              "id": "p20",
+              "name": "Raised planter B",
+              "appearanceSimilarity": 0.684,
+              "distanceM": null,
+              "score": 0.41029722690582277
+            },
+            {
+              "id": "p17",
+              "name": "Seedlings (grey pot)",
+              "appearanceSimilarity": 0.682,
+              "distanceM": null,
+              "score": 0.40919147729873656
+            },
+            {
+              "id": "p08",
+              "name": "Aloe (painted ceramic)",
+              "appearanceSimilarity": 0.606,
+              "distanceM": null,
+              "score": 0.3635836958885193
+            },
+            {
+              "id": "p19",
+              "name": "Sprout (white pot)",
+              "appearanceSimilarity": 0.587,
+              "distanceM": null,
+              "score": 0.35221502780914304
+            },
+            {
+              "id": "p24",
+              "name": "Bushy herb",
+              "appearanceSimilarity": 0.585,
+              "distanceM": null,
+              "score": 0.35103335380554196
+            },
+            {
+              "id": "p18",
+              "name": "Seedling tray",
+              "appearanceSimilarity": 0.583,
+              "distanceM": null,
+              "score": 0.3497941017150879
+            },
+            {
+              "id": "p15",
+              "name": "Tiny planter",
+              "appearanceSimilarity": 0.53,
+              "distanceM": null,
+              "score": 0.31820690631866455
+            },
+            {
+              "id": "p14",
+              "name": "Small green pot 2",
+              "appearanceSimilarity": 0.356,
+              "distanceM": null,
+              "score": 0.2136352479457855
+            },
+            {
+              "id": "p13",
+              "name": "Small green pot 1",
+              "appearanceSimilarity": 0.35,
+              "distanceM": null,
+              "score": 0.20995820760726927
+            },
+            {
+              "id": "p21",
+              "name": "Seedlings (blue ceramic)",
+              "appearanceSimilarity": 0.318,
+              "distanceM": null,
+              "score": 0.1908985733985901
+            },
+            {
+              "id": "p23",
+              "name": "Tall leafy shrub",
+              "appearanceSimilarity": 0.136,
+              "distanceM": null,
+              "score": 0.0818490207195282
+            },
+            {
+              "id": "p22",
+              "name": "Tomato",
+              "appearanceSimilarity": 0.083,
+              "distanceM": null,
+              "score": 0.05004061907529831
+            }
+          ]
+        },
+        "metric": true,
+        "position": {
+          "x": 1.4263322380317882,
+          "y": 0.6,
+          "z": 2.426248754879361
+        }
+      }
+    ]
+  }
+}

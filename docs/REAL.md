@@ -1,208 +1,133 @@
-# Real: exact-camera photoreal views and metric Gaussian playback
+# Real: camera photos with nearby Gaussian playback
 
-## What the button does
+Current pipeline: **3**, implemented in `public/modules/real.js`, `routes/real.py`,
+`tools/render_real.py` and `tools/real_depth_shell.py`.
 
-`Real` is no longer a plant-cutout/floor-texture toggle. With it enabled:
+## User flow
 
-1. Wait for the camera to settle for 600 ms. Capture its full world matrix, position,
-   quaternion, vertical FOV, aspect, and near/far planes. Do **not** switch to a
-   different eye/top camera.
-2. Render the procedural scene at that camera: sRGB beauty, camera-Z depth in
-   metres, and integer item IDs. The depth/ID shaders support `InstancedMesh`, alpha
-   tests/maps, and material sidedness. Hide labels, care sprites, heat maps,
-   selection lines and all non-procedural scene roots while capturing. Restore
-   visibility/materials/render targets even on failure.
-3. POST `/api/real/view`. A local depth-ControlNet img2img gives a **provisional**
-   preview; the subscription gpt-image-2 route runs concurrently using the beauty,
-   two real-room photographs, and the actual plant/pot contact sheet. A style prompt
-   for the local model was derived from those room photographs; no IP-Adapter.
-4. Crossfade the accepted preview/HQ image only at its capture pose. Hide it
-   immediately on camera movement; it is not a pretend walkable image sphere.
-5. Run SHARP with the capture focal length, then robustly align camera-Z to the
-   procedural metric depth and transform Gaussian centres **and covariances** into
-   the planner's room coordinates. Rejected fits never enter the published scene.
-6. Confidence-weighted 4 mm voxel fusion produces a bounded `.splat` plus diagnostic
-   PLY. Spark loads it into the **main planner scene**. Procedural meshes are hidden
-   under a covered live view, but remain present for selection/raycasting.
-7. A settled camera more than 25 degrees or 0.65 m from every captured source
-   requests another view. Camera FOV/aspect differences also require a new capture.
-   Coverage is currently this geometric heuristic, **not** measured per-pixel
-   visibility/occlusion. Outside coverage, show procedural geometry underneath.
+- The HUD camera button is a **shutter**, not a persistent auto-generation toggle.
+  A tap freezes the exact current camera matrix, quaternion, FOV/aspect, beauty,
+  metric camera-Z depth and item-ID passes and submits one explicit job.
+- A short flash, optional WebAudio shutter sound and thumbnail flight to Almanac
+  acknowledge the capture. Reduced-motion preferences suppress the flight.
+- While developing, show the blurred **procedural capture**, not a purported local
+  photograph. Camera movement, idle, polling and playback never buy image turns.
+- The subscription gpt-image-2 request receives beauty, a depth-layout guide, two
+  real-room photographs, and individual cutouts for **every item-ID-visible plant**,
+  with names, normalized bounding boxes and exact camera parameters in its prompt.
+  These are conditioning inputs, not a guarantee of semantic correctness.
+- Almanac → Photos lists shots newest first with time, camera and visible plants.
+  The same shots appear on their plants' cards. A photo opens full view, **Go to
+  this view**, **Walk around**, and delete actions.
+- At the exact capture pose the HQ photograph stays crisp. Its opacity smoothly
+  falls to zero by 4° or 8 cm movement. Nearby playback uses only that photo's
+  Gaussians, first coarse then fine; it does not fuse independently invented photos.
+- Live splat coverage requires **angle <15°, distance <0.3 m and matching
+  intrinsics**. Outside that region the procedural room returns. These limits are
+  conservative heuristics, not measured unseen-surface coverage.
 
-The chip shows generating, preview/refining, photoreal, cached, live Gaussian view,
-errors and rejected alignment. Tap it for the Real details/regeneration panel.
-There is one separate retry cache slot per pose, not unbounded retries.
+## Default geometry: deterministic depth shell
 
-## Cache and persistence
+The generated photo is projected onto the captured procedural metric depth, with
+pixel-centred camera rays and tangent-aligned, bounded Gaussian covariance. Invalid
+source depth is skipped; window colour stays on the captured glass proxy rather
+than an inferred outdoor surface. Depth jumps do not create stretched tangents.
 
-- Layout revision hashes room geometry and geometry/identity-bearing item fields,
-  including fridge-open state. Care scores/support caches do not invalidate it.
-- Pose cache lookup rounds position/quaternion to 0.001 and FOV/aspect to 0.01/0.001.
-  The stored capture matrices themselves are never rounded.
-- A layout edit clears the current overlay, splats and pending client epoch. Late
-  image/download completions cannot reattach stale layout geometry.
-- Immutable jobs live in `data/renders/real/<revision>/<view-id>/`.
-- `GET /api/real/<revision>/views` returns jobs plus the current scene manifest.
-  `POST /api/real/layout` identifies a layout without generating an image.
-- Three in-flight jobs maximum. Web-service restart recovery resumes an unfinished
-  original capture; an existing HQ image/provenance is reused, not repurchased.
-- The old `/api/render` and CLI panorama workflow remain for historical callers;
-  the planner Real UI no longer uses that uncalibrated gallery path.
-- No Real route reads or writes `data/state.json`. Browser regression tests mock
-  GET `/api/state` as `{}` and intercept owner-state writes.
+The CPU implementation uses NumPy, SciPy and Pillow, **no ML lift weights**, no
+GPU queue and no SHARP inference. Coarse uses at most 40,000 Gaussians; fine at most
+400,000. Each standard `.splat` record is 32 bytes. Coarse and fine are published
+atomically under the deletion/publication lock, with per-stage timing receipts.
+The browser caps Real DPR at 1.25 and restores the original DPR on exit.
 
-## Metric calibration and its limits
+This is a **single-view photo shell, not recovered photographic depth or a scanned
+room**. Near-zero procedural-depth residual is expected by construction. Thin
+foliage can carry the photo's wrong surfaces/occlusions; hidden sides are missing.
+Do not advertise the acceptance check as reconstruction accuracy.
 
-Use RANSAC positive scale/shift hypotheses followed by Huber refinement **inside
-its consensus**, avoiding high-leverage exterior depths pulling scale toward zero.
-Report median, p90, RMSE and the fraction within 25 cm on the sampled correspondence
-set, including outliers. Current acceptance: positive scale 0.05–20, median <25 cm,
-p90 <90 cm and >55% within 25 cm. These are coarse generated-view gates, **not**
-survey-grade accuracy or held-out reconstruction validation.
+## Backends, rights and cache identity
 
-Exclude the procedural window's flat glass proxy from fitting: generated trees
-outside it are not known metric room surfaces. After acceptance, bounded 65%
-residual anchoring to procedural surfaces reduces independent-view ghosting. Window
-colour is represented on the known glass proxy, not a reconstructed exterior.
-Report pre-anchor residuals separately from post-anchor residuals; the latter are
-not an independent accuracy result. Non-window Gaussians farther than 65 cm from
-known surfaces are discarded.
+| Component | Default / rights |
+|---|---|
+| HQ photo | ChatGPT subscription `image_generation` / gpt-image-2; applicable OpenAI terms, not open model weights |
+| Gaussian lift | `GARDEN_REAL_BACKEND=shell` (default), alias `procedural-depth-shell`; no learned lift weights |
+| Experimental lift | `GARDEN_REAL_BACKEND=sharp-research` only; Apple SHARP AMLR weights explicitly exclude product development/commercial products |
+| Playback | Spark 2.3.1 and three.js 0.186.1, MIT |
+| Research preview | Disabled. `REAL_RESEARCH_PREVIEW=1` explicitly opts in to the old SD-Turbo/depth-ControlNet comparison; ControlNet production rights remain unclear |
 
-The consistency gate checks green foliage support around the **rendered item-ID
-masks**, and refuses gross foliage loss. It is deliberately a weak proxy: it does
-not prove plant count, species, pot identity, furniture identity or exact layout.
-A badly failed image is labelled needs-review and is not fused; manual regeneration
-is available. There is no automatic semantic/count verifier or gsplat refinement.
+`productionSafe` on a shell receipt concerns **lift-weight licensing only**, not
+photo fidelity, all transitive rights, or general product readiness. SteadySplats,
+TripoSplat, ZipSplat, SPFSplat and Flash3D research/rights decisions are documented
+in [the visual report](research/real-visual-tests.md). None is silently installed
+or claimed as a qualified replacement.
 
-## Models, memory and licences
+A backend is frozen in a new capture and forms part of its cache identity, alongside
+pipeline, layout revision and quantized lookup pose. Stored camera matrices are not
+rounded. Layout edits invalidate active overlays and scene epochs; late downloads
+cannot attach to a newer layout/selection. Old SHARP jobs remain labelled research.
+Existing HQ/raw HQ files survive worker restart without repurchase, including an
+explicit provenance-gap label if a receipt was interrupted.
 
-| Stage | Model/route | Licence / constraint |
-|---|---|---|
-| Local preview | `stabilityai/sd-turbo`, fp16, 4 configured steps, strength 0.5 (2 effective img2img steps) | Stability model-card licence/membership conditions; do not assume MIT/Apache or an unrestricted commercial licence. <https://huggingface.co/stabilityai/sd-turbo> |
-| Local depth condition | `thibaud/controlnet-sd21-depth-diffusers` | Model card says `license: other`, referring to preprocessor licences. **Unclear production rights**; research prototype only pending clarification. <https://huggingface.co/thibaud/controlnet-sd21-depth-diffusers> |
-| HQ | Existing ChatGPT subscription `image_generation` / gpt-image-2 | OpenAI subscription terms, not open model weights; no API key route. |
-| 3D lift | Existing Apple SHARP `sharp_2572gikvuh.pt` | **Apple AMLR weights are restricted to research purposes and explicitly exclude product development/commercial products. This is a production-licensing blocker**, not merely a non-commercial-use checkbox. Code has separate Apple terms. <https://huggingface.co/apple/Sharp/blob/main/LICENSE> |
-| Playback | Existing vendored Spark + three.js | Library licences in their installed packages; no model inference on phone. |
+Photos and tombstones live in `data/renders/real/<revision>/<view-id>/`:
 
-ComfyUI Python runs preview/HQ; the existing SHARP venv runs SHARP. Dependencies
-added to ComfyUI: diffusers 0.36.0, accelerate, plyfile, opencv-python-headless.
-Weights are in `$PRIVATE_DATA`, not Git.
+- `POST /api/real/view`: requires `explicit: true`; max three in-flight jobs.
+- `POST /api/real/layout`: identify layout, never generates an image.
+- `GET /api/real/<revision>/views`: jobs and legacy manifest.
+- `GET /api/real/photos`: all non-deleted HQ photos, across revisions.
+- `POST /api/real/photo/<revision>/<view-id>/delete`: durable tombstone; late
+  publication cannot resurrect a deleted photo in the index.
 
-Preview weights load lazily, move to CPU after 45 seconds idle or before SHARP,
-and can return to CUDA without rereading the checkpoint. Real GPU stages use a
-file lock. Check for at least 6 GB free for preview / 5.5 GB for SHARP and do not
-stop the independent scan worker. That worker does not share this file lock, so
-free-memory admission is not a guarantee against other processes allocating later.
+No Real route reads or writes `data/state.json`. Tests route owner-state reads to
+`{}` and intercept owner-state/journal writes. Do not restore old owner data.
+Legacy panorama/uncalibrated SHARP CLI work requires the explicit research backend;
+`--splat-only` on a captured job requires an already-existing HQ image.
 
-Mobile cap: 900,000 fused Gaussians, 450,000 retained per source, SH degree zero,
-32 bytes per transferred Gaussian; Real render DPR capped at 1.25 and restored on
-exit. This is a hard cap/resolution budget, not adaptive spatial LOD.
+## Qualification and repeatable evidence
 
-## Real evidence, 2026-10-18
-
-Canonical latest-layout receipt directory:
-
+Current evidence root:
 `$PRIVATE_DATA`
 
-The owner layout changed during work. The first three generations and failed
-calibration/preview attempts are retained separately under `real-20261018/`.
-Exactly **six explicit verification** subscription generations were requested:
-three for the original snapshot, three for the next saved layout. Later readback
-found **two additional automatic runtime jobs** from a 411×783 client in that same
-revision; their origin was not logged, so they cannot be attributed to a specific
-person/test. Total stored HQ images became eight. The live manifest consequently
-grew to five sources and the **900,000**-Gaussian cap; the 693,125-Gaussian artifact
-below remains immutable and is what the saved screenshots/frame timings qualify.
-Playback verification pins the recorded manifest while fetching/rendering the real
-stored splat bytes, so concurrent client fusion does not silently change evidence.
-The final qualified snapshot SHA-256 matched the owner file at that verification:
-
-`5551cc5ee9bbff8b3b3f1600fcd700535882e47b484fe857b54f4d771fac5a4b`
-
-Latest qualified revision `4bb1fe2a7238c12ea5ccf231`, sources:
-
-**Later owner edit:** during the final regression pass the parent changed the
-saved plan again to SHA-256
+The immutable owner snapshot SHA-256 is
 `ef59037607474726fa4ba3d9141337e63c8bd06b86cbc3cb9f7afa719e49b8b1`.
-The six-turn explicit verification budget was not exceeded and that owner edit was not
-rolled back. The three HQ/splat viewpoints below qualify the `5551…` snapshot,
-not that later plan. Opening Real on the later plan correctly selects a new
-revision and generates new views; do not present the old scene as its evidence.
 
-Sources for the qualified snapshot:
+See [real-visual-tests.md](research/real-visual-tests.md) for six-pose before/after
+metrics, contact sheets, cached vision judgements, per-stage latency, regressions
+and remaining visual defects. Earlier `real-20261018*` artifact directories qualify
+older revisions and remain historical evidence, not this pipeline's acceptance.
 
-| View | Job ID | Capture | Preview inference/job | HQ | SHARP incl GPU queue/load/export | Alignment | Pre-anchor median / p90 |
-|---|---|---:|---:|---:|---:|---:|---:|
-| 1 | `a6845cee2bfcfcd82f29ba0a` | 172 ms | 330 ms warm | 52.35 s | 53.26 s | 2.66 s | 14.0 / 38.5 cm |
-| 2 | `f9806fefb7e50195ea6d5688` | 75 ms | 9.48 s cold | 48.39 s | 31.39 s | 2.21 s | 8.6 / 29.2 cm |
-| 3 | `cce33b5d509a059ea26d9791` | 87 ms | 328 ms warm | 56.15 s | 70.43 s | 1.64 s | 11.9 / 35.8 cm |
-
-All three previews arrived about 14.6–14.9 s after their jobs started in the
-concurrent cold batch, including worker startup and waiting for the first GPU
-model load. **Cold preview did not meet the <2-second target.** Separate measured
-CPU-resident resume was 981 ms; warm model generation was 313–330 ms. SHARP network
-inference alone was 5.92–6.41 s. The receipt's `sharpLoadMs` originally includes
-queue waiting; subsequent runs now expose `gpuQueueMs` separately. Do not relabel
-those batch load values as pure model-loading times.
-
-Latest fusion: **693,125 Gaussians**, 22,180,000 bytes, 2.01 s fusion.
-
-- `generated-contact.jpg`: local previews (top) and HQ photos (bottom), all 3 views.
-- `novel-1.png`, `novel-2.png`, `novel-3.png`: **new** live-splat positions between
-  the sources. The test asserts image opacity zero and procedural roots hidden.
-- `novel-contact.jpg`: downscaled contact sheet inspected with vision.
-- `results.json`, `metrics.json`, `hardware.json`, `novel-views.json`: raw receipts.
-- Capture JSON includes the exact cameras, beauty, IDs and metric depth bytes.
-- The fused artifact URL is in `results.json`, with diagnostic PLY beside it.
-
-Hardware Chromium: NVIDIA RTX 3080 Ti via ANGLE/Vulkan, three.js 186,
-412×915 CSS viewport, emulated DPR 2.6, Real render DPR 1.25. **560** frame intervals:
-median **16.7 ms**, p95 **16.8 ms**. Includes the controlled evidence trace, not a
-physical Samsung benchmark. Loopback transfer **63.6 ms**, Spark decode **148.2 ms**;
-these are **not** Tailscale/phone download measurements.
-
-### Honest visual assessment / remaining gaps
-
-The HQ outputs look photographic and broadly retain the visible planters, window,
-light stands and plants. They still invent fine detail, change some leaves/pots,
-and turn grow-light spill into a purple band on planters. The local preview is
-mostly enhanced procedural style, **not convincingly photoreal**, and the third
-preview can change the planter's appearance. The foliage-only check does not
-catch that furniture-identity error.
-
-Novel splat views are real-time and recognisable, but have window holes, noisy thin
-stems, soft planter edges and some multi-view ghosting. They are not a clean,
-measured room reconstruction. Only a small window-facing eye-level region was
-qualified; reverse views, large orbits, cutaway overview generations and full-room
-coverage were not visually certified. No physical-phone frame/transfer measurement.
-
-The final capture cleanup removes Zen/care sprites from **future** beauty/depth
-conditioning. The six budgeted generation inputs preceded that cleanup and some
-HQ outputs retain small white-flower-like detail from those sprites. No more
-subscription calls were spent to hide that limitation. The capture test explicitly
-checks that an unrelated scene overlay cannot contaminate the depth pass.
-
-Production blockers: SHARP research-only licence, unclear ControlNet licence,
-semantic consistency verification, cold-start latency and splat reconstruction
-quality. Do not call this production-ready photoreal navigation.
-
-## Verify without spending image turns
+Free regression commands (ComfyUI Python has scorer/geometry dependencies):
 
 ```sh
+node tests/camera_capture.mjs
+node tests/camera_ui.mjs
+node tests/camera_races.mjs
+node tests/camera_progressive.mjs
 node tests/real_capture.mjs
-env -u PYTHONPATH -u PYTHONHOME $PRIVATE_DATA tests/real_backend.py
 node tests/real_ui.mjs
-REAL_OUT=$PRIVATE_DATA node tests/real_evidence.mjs --views-only
-node tests/phone.mjs
+env -u PYTHONPATH -u PYTHONHOME $PRIVATE_DATA tests/real_backend.py
+env -u PYTHONPATH -u PYTHONHOME $PRIVATE_DATA tests/real_pipeline_backend.py
+env -u PYTHONPATH -u PYTHONHOME $PRIVATE_DATA tests/real_depth_shell.py
+env -u PYTHONPATH -u PYTHONHOME $PRIVATE_DATA tests/real_visual_metrics.py
+env -u PYTHONPATH -u PYTHONHOME $PRIVATE_DATA tests/real_replay.py
 node tests/core.mjs
+node tests/phone.mjs
+node tests/almanac.mjs http://127.0.0.1:8790
 ```
 
-`real_evidence.mjs` without an explicit mode skips paid/live generation. Use
-`--capture-only` for conditioning-only evidence. `--generate` makes three real
-subscription generations and GPU jobs; it must be an intentional operator action.
-For disposable tests, keep generated artifacts under the artifact store and keep
-owner state API writes mocked. Do not restore an older backup over an owner edit.
+Cached visual replay, **zero new image turns**:
 
-Restart: `systemctl --user restart garden-room`. New route modules are discovered
-by the existing server loader; the web process remains stdlib-only. Do not print
-the app token, OAuth credentials or request headers in receipts.
+```sh
+E=$PRIVATE_DATA
+P=$PRIVATE_DATA
+env -u PYTHONPATH -u PYTHONHOME "$P" tools/replay_real_shell.py "$E/before" "$E/after"
+REAL_STAGE=after REAL_OUT="$E/after" node tests/real_visual.mjs --cached
+env -u PYTHONPATH -u PYTHONHOME "$P" tools/score_real_visual.py "$E/after"
+```
+
+`--judge` additionally invokes a cached ChatGPT vision judge, once per pose if no
+verdict exists. `tests/real_visual.mjs --generate` is **paid/live opt-in**, limited
+to six cached pose jobs per output directory; do not use it in a normal suite.
+After shell-only replay the HQ timings are retained historical generation costs;
+`hqElapsedMs` is cached receipt loading, **not** a new generation speed claim.
+
+Restart after route changes: `systemctl --user restart garden-room`. Never print
+app tokens, OAuth credentials, headers, private source photos or cutouts in logs.

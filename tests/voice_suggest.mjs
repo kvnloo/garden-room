@@ -43,7 +43,7 @@ try {
   const recent = await page.evaluate(() => GR.voice.recent[0]);
   if (recent.success) {
     assert.deepEqual([after.overlaps, after.spacing, after.hard], [0, 0, 0], 'claimed success with conflicts: ' + JSON.stringify(after));
-    assert.equal(recent.label, 'Plants rearranged with clear spacing');
+    assert.match(recent.label, /^Plants rearranged\b/, 'successful action announces the applied rearrangement');
     const meshAfter = await page.evaluate(() => GR.state.items.filter((i) => i.kind === 'plant').map((i) => { const it = GR.itemById(i.id); return [i.id, GR.meshOf(i.id)?.position.x, it.x]; }));
     assert.ok(meshAfter.every(([, m, x]) => Math.abs(m - x) < 1e-6), '3D meshes follow the applied plan');
     assert.ok(meshAfter.some(([id, m]) => Math.abs(m - meshBefore.find((b) => b[0] === id)[1]) > 0.05), 'plants actually moved');

@@ -432,7 +432,11 @@ function setMode(m) {
   closeSheet(); selected = null; drawDock(); setView(m === 'edit' ? 'top' : 'overview'); syncMeshes();
 }
 document.querySelectorAll('#mode .z-seg__item').forEach((b) => b.onclick = () => setMode(b.dataset.mode));
-$('#bReal').onclick = () => setRealLook(!realLook);
+$('#bReal').classList.remove('real-filter');
+$('#bReal').innerHTML = ICON.camera;
+$('#bReal').setAttribute('aria-label', 'Camera shutter');
+$('#bReal').removeAttribute('aria-pressed');
+$('#bReal').onclick = () => { if (window.GR?.real) void GR.real.requestView(); else toast('Camera is still loading'); };
 $('#bView').onclick = () => { const order = ['overview', 'top', 'eye']; setView(order[(order.indexOf(view) + 1) % 3]); };
 $('#bLight').innerHTML = ICON.sun; $('#bFridge').innerHTML = ICON.fridge;
 $('#bLight').onclick = () => { showLight = !showLight; $('#bLight').setAttribute('aria-pressed', showLight); heatMesh.visible = showLight; drawHeat(); syncMeshes(); };
@@ -626,8 +630,8 @@ const PANELS = {
     render();
   },
   real() {
-    if (window.GR?.real) { setRealLook(true); return; }
-    toast('Real view generator is loading — try again shortly');
+    if (window.GR?.real) { window.GR.almanac?.openPhotos(); return; }
+    toast('Camera is still loading');
   },
   async scan() {
     let scans = []; try { scans = await api('/api/scans'); } catch (e) { toast(e.message); }
@@ -677,14 +681,14 @@ async function pollChat() {
 // Real keeps selection/raycast geometry intact; generated content owns coverage.
 let realScene = null, realCoverage = false;
 function updateRealVisibility() {
-  if (realScene) realScene.visible = realLook;
+  if (realScene) realScene.visible = realLook && realCoverage;
   roomGroup.visible = itemGroup.visible = !(realLook && realCoverage);
 }
 function setRealLook(on) {
-  realLook = !!on; $('#bReal').setAttribute('aria-pressed', realLook);
+  realLook = !!on;
   updateRealVisibility();
   window.GR?.real?.setEnabled(realLook);
-  toast(realLook ? 'Real · hold still for a photoreal view' : 'Procedural room');
+  toast(realLook ? 'Camera · tap the shutter to take a photo' : 'Procedural room');
 }
 // ───────── boot ─────────
 async function loadPlants() {
@@ -726,7 +730,25 @@ async function boot() {
     applySuggestion(i) { const pr = suggestions[i]; if (!pr) throw new Error('No suggestion ' + i); if (pr.warns.some((w) => !w.startsWith('(soft)'))) throw new Error('That suggestion has unresolved issues'); applyPlan(pr.items, 'Applied suggestion ' + (i + 1)); return { score: Math.round(lastEval.score) }; },
     async listLayouts() { let list = []; try { list = await api('/api/layouts'); } catch { list = JSON.parse(localStorage.getItem('gr_layouts') || '[]'); } return list; },
     async loadLayout(name) { const list = await GR.listLayouts(); const l = list.find((x) => x.name === name) || list.find((x) => String(x.name).toLowerCase().includes(String(name).toLowerCase())); if (!l) throw new Error('No saved layout named ' + name); const plan = migratePlan(l); if (plan.room) { state.room = plan.room; buildRoom(); } applyPlan(plan.items, 'Loaded ' + l.name); return { name: l.name, score: Math.round(lastEval.score) }; },
-    async saveLayout(name) { const list = await GR.listLayouts(); list.unshift({ name: name || new Date().toLocaleString(), score: lastEval?.score, room: state.room, items: stripState().items, ts: Date.now() }); localStorage.setItem('gr_layouts', JSON.stringify(list)); await api('/api/layouts', { method: 'PUT', body: JSON.stringify(list) }).catch(() => {}); return { saved: list[0].name }; },
+    async saveLayout(name, proposal = null) {
+      const list = await GR.listLayouts(), items = proposal?.items || stripState().items, room = proposal?.room || state.room;
+      const entry = { name: name || new Date().toLocaleString(), score: proposal ? evaluate(items.map((i)=>({...i})), room, {winWeight}).score : lastEval?.score, room, items: items.map(strip), ts: Date.now() };
+      list.unshift(entry); if (proposal?.scanId) entry.scanId = proposal.scanId;
+      if (!proposal) localStorage.setItem('gr_layouts', JSON.stringify(list));
+      try {
+        const response = await api('/api/layouts', { method: 'PUT', body: JSON.stringify(list) });
+        if (response.error) throw new Error(response.error);
+        if (proposal) {
+          const saved = await api('/api/layouts');
+          if (!Array.isArray(saved) || !saved.some((l)=>l.ts===entry.ts && l.name===entry.name && JSON.stringify(l.items)===JSON.stringify(entry.items))) throw new Error('Saved layout could not be verified');
+          localStorage.setItem('gr_layouts', JSON.stringify(saved));
+        }
+      } catch (e) { if (proposal) throw e; }
+      return { saved: entry.name };
+    },
+    applyPlan(items, message = 'Applied layout') { applyPlan(items, message); return { score: Math.round(lastEval.score) }; },
+    miniMap,
+    checkPlan(items) { const before = new Set(evaluate(state.items.map((i)=>({...i})), state.room, {winWeight}).warns); return evaluate(items.map((i)=>({...i})), state.room, {winWeight}).warns.filter((w)=>!w.startsWith('(soft)') && !before.has(w)); },
     setMode, setView, select(id) { selected = id; drawSelection(); if (id) openItem(id); }, openItem, openSheet, closeSheet, openPanel: (k) => { stopPolls(); PANELS[k] && PANELS[k](); },
     moveItem(id, x, z) { const it = GR.itemById(id); if (!it) return false; it.x = x; it.z = z; rescore(); save(); return true; },
     setProps(id, props) { const it = GR.itemById(id); if (!it) return false; Object.assign(it, props); if (it.kind === 'plant') { if ('potD' in props && !it.box) it.w = it.d = it.potD; it.h = it.potH + it.height; } const g = meshes.get(id); if (g) { itemGroup.remove(g); meshes.delete(id); } rescore(); save(); return true; },

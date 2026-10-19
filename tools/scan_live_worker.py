@@ -29,6 +29,8 @@ from transformers import Owlv2Processor, Owlv2ForObjectDetection
 from plantcv import plantcv as pcv
 from scan_live_geometry import Geometry, alignment, transform, camera
 from scan_live_splats import LiveSplats
+from scan_live_layout import build_proposal
+from datetime import datetime, timezone
 LABELS=['dining table','glass table','refrigerator','china cabinet','potted plant','floor lamp','window','door']
 MODEL='google/owlv2-base-patch16-ensemble'
 DATA=ROOT/'data/scan_live'
@@ -113,12 +115,15 @@ class Detector:
             candidates.append(dict(id=plant['id'],name=plant['name'],appearanceSimilarity=round(similarity,3),distanceM=distance,score=score))
         candidates.sort(key=lambda c:-c['score']); best=candidates[0]
         confident=pos is not None and best['distanceM'] is not None and best['distanceM']<.65 and best['appearanceSimilarity']>.65 and best['score']-candidates[1]['score']>.08
-        d['identity']=dict(status='suggested' if confident else 'unsure',id=best['id'] if confident else None,candidates=candidates[:3])
+        # Keep all 25 appearance candidates for global one-to-one layout matching.
+        # Three green-looking leaves are not enough to discard the actual identity.
+        d['identity']=dict(status='suggested' if confident else 'unsure',id=best['id'] if confident else None,candidates=candidates)
 
 
 class Scan:
     def __init__(self,id,plan):
         self.id=id; self.plan=validate_plan(plan); self.geometry=Geometry(); self.seq=-1; self.last=time.monotonic(); self.alignment=None
+        self.created_at=datetime.now(timezone.utc).isoformat(); self.observed={}
         self.dir=DATA/id; self.dir.mkdir(parents=True,exist_ok=True,mode=0o700)
         self.splats=LiveSplats(self.dir/'live.splat'); self.result=dict(id=id,state='ready',detections=[],corrections=[],alignment=None)
 
@@ -183,6 +188,14 @@ class Scan:
         self.seq=seq; self.last=time.monotonic()
         timings=dict(detection=round((t1-t0)*1000,2),geometry=round((t2-t1)*1000,2),plantsAlignment=round((t3-t2)*1000,2),splat=round((t4-t3)*1000,2),total=round((t4-start)*1000,2))
         self.result=dict(id=self.id,state='scanning',seq=seq,detections=objects,corrections=corrections,alignment=self.alignment,geometry=geom,splat=splat,timings=timings,metric=metric,cameraMode=meta['mode'],message='Move sideways slowly for triangulation' if geom['posed'] else '2D camera only: orientation has no metric translation; use AR camera access for 3D')
+        for d in objects:
+            previous=self.observed.get(d['id'],{})
+            self.observed[d['id']]={**previous,**d}
+        # Bound the whole-scan observation ledger, not just the last eight frames.
+        # Otherwise looking away from a plant erases it from the final layout.
+        self.observed=dict(list(self.observed.items())[-100:])
+        self.result.update(createdAt=self.created_at,planSnapshot=self.plan,observedDetections=list(self.observed.values()))
+        self.result['proposal']=build_proposal(self.plan,list(self.observed.values()),metric,self.alignment,self.id,created_at=self.created_at)
         tmp=self.dir/'latest.tmp'; tmp.write_text(json.dumps(self.result,allow_nan=False)); tmp.replace(self.dir/'latest.json')
         return self.result
 

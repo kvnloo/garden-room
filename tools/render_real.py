@@ -3,15 +3,24 @@
 Run with the ComfyUI venv (has the ChatGPT-subscription gpt-image-2 route):
   env -u PYTHONPATH -u PYTHONHOME $PRIVATE_DATA tools/render_real.py data/renders/<id> [--pano-only|--image-only|--splat-only]
 Inputs in the request dir: view.jpg (3D screenshot), top.jpg (top view), layout.json.
-Outputs: real.png, pano.png (2:1 equirect), world.ply (SHARP 3DGS), provenance.json, status.json.
+Camera outputs: real.png, coarse.splat, fine.splat, provenance.json, status.json.
+Camera lift defaults to a CPU procedural depth shell. GARDEN_REAL_BACKEND=sharp-research
+explicitly selects Apple SHARP AMLR research weights, which exclude product development.
 """
 import base64, hashlib, importlib.util, io, json, os, shutil, subprocess, sys, time, threading
 from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("codex_image", "$PRIVATE_DATA")
-codex = importlib.util.module_from_spec(spec); spec.loader.exec_module(codex)
+spec = importlib.util.spec_from_file_location('real_route_helpers', ROOT/'routes/real.py')
+route_helpers = importlib.util.module_from_spec(spec); spec.loader.exec_module(route_helpers)
+
+
+def generate_image(prompt, images, **kwargs):
+    # Import subscription/torch dependencies only when a generation is requested.
+    spec = importlib.util.spec_from_file_location('codex_image', '$PRIVATE_DATA')
+    codex = importlib.util.module_from_spec(spec); spec.loader.exec_module(codex)
+    return codex.generate(prompt, images, **kwargs)
 
 SHARP = "$PRIVATE_DATA"
 SHARP_CKPT = "$PRIVATE_DATA"
@@ -19,7 +28,7 @@ ROOM_REFS = ["20261018_121323.jpg", "20261018_121353.jpg"]  # dining room as it 
 
 
 def b64(img, max_side=1280):
-    im = img if isinstance(img, Image.Image) else Image.open(img).convert("RGB")
+    im = img if isinstance(img, Image.Image) else Image.open(img).convert("RGBA")
     im = im.copy(); im.thumbnail((max_side, max_side))
     buf = io.BytesIO(); im.save(buf, "PNG"); return base64.b64encode(buf.getvalue()).decode()
 
@@ -40,6 +49,63 @@ def status(d, **kw):
         tmp=d/'status.worker.tmp';tmp.write_text(json.dumps(s));tmp.replace(d/'status.json')
 
 
+def camera_inputs(d, capture, layout):
+    """Freeze ordered conditioning inputs and the exact visible instance inventory."""
+    import re
+    import numpy as np
+    width, height = capture['depth']['width'], capture['depth']['height']
+    depth = np.fromfile(d/'depth.f32', dtype='<f4').reshape(height, width)
+    valid = np.isfinite(depth) & (depth > .05) & (depth < 40)
+    if not valid.any(): raise ValueError('No valid camera depth for layout guide')
+    near, far = np.percentile(depth[valid], [2, 98])
+    intensity = (1-(depth-near)/max(float(far-near), .1)).clip(0, 1)
+    guide = np.where(valid, .05+.95*intensity, 0)  # reserve black for absent geometry
+    Image.fromarray((guide*255).astype('uint8')).convert('RGB').save(d/'depth-guide.png')
+    plants = route_helpers.visible_plants(d)
+    by_id = {item['id']: item for item in layout['items']}
+    sources = [(d/'view.jpg', 'beauty', {}), (d/'depth-guide.png', 'depth-layout', {})]
+    sources += [(ROOT/'refs'/name, 'room-identity-style', {}) for name in ROOM_REFS]
+    for plant in plants:
+        src = by_id[plant['id']].get('src', '')
+        match = re.fullmatch(r'/?plants/(p[0-9]{2})\.webp', src)
+        if match is None:
+            raise ValueError('Visible plant has no safe inventory cutout: '+plant['id'])
+        path = ROOT/'public/plants'/(match[1]+'.webp')
+        if path.is_symlink() or not path.is_file():
+            raise ValueError('Visible plant cutout unavailable: '+plant['id'])
+        sources.append((path, 'plant-cutout', {'plantId': plant['id'], 'bbox': plant['bbox']}))
+    images, records = [], []
+    for index, (path, role, extra) in enumerate(sources, 1):
+        encoded = b64(path)
+        images.append(encoded)
+        records.append({'image': index, 'role': role, 'path': str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else path.name,
+                        'sha256': hashlib.sha256(base64.b64decode(encoded)).hexdigest(),
+                        'sourceSha256': hashlib.sha256(path.read_bytes()).hexdigest(), **extra})
+    prompt = (
+        'Convert image 1, the authoritative beauty render, into a photoreal smartphone photograph of this exact room and camera. '
+        'Preserve camera framing, perspective, object silhouettes, positions, sizes, overlaps, crop, empty space and visible plant count. '
+        'Image 2 is the camera-Z depth visualization and LAYOUT GUIDE, brighter means nearer; black means no measured surface. '
+        'Respect its occlusions and spatial layout. Images 3 and 4 are private photographs of this room for furniture identity, '
+        'materials and style only; their older arrangement must not override images 1 and 2. '
+        'The remaining images are INDIVIDUAL plant and pot identity cutouts, one for EVERY visible instance listed below. '
+        'Use each assigned cutout at its listed normalized bounding box [left, top, right, bottom], origin top left, values in [0,1]. '
+        'Keep the precise leaf shapes, pot colors and existing pot patterns shown by that cutout. '
+        'No hallucinated decor, added furniture, invented pot patterns, extra plants, missing plants, labels, text, people or collages. '
+        'No purple spill, purple bands or invented colored grow-light reflections on pots or furniture. '
+        'Keep daylight and grow lights natural and restrained. Preserve cutaway/open geometry if present; do not invent hidden walls or ceilings. '
+        f'Output exactly {width}:{height}. Exact camera, in metres, with vertical FOV in degrees: '
+        + json.dumps(capture['camera'], sort_keys=True) + '. Visible plants: '
+        + json.dumps([dict(plant, image=5+i) for i, plant in enumerate(plants)], sort_keys=True)
+        + '. The planning render and depth guide remain authoritative when room reference photos disagree.')
+    provenance = {'pipeline': 3, 'inputs': records, 'visiblePlants': plants,
+                  'depthGuide': {'nearM': float(near), 'farM': float(far), 'brighter': 'nearer', 'invalid': 'black'},
+                  'captureSha256': hashlib.sha256((d/'capture.json').read_bytes()).hexdigest(),
+                  'layoutSha256': hashlib.sha256((d/'layout.json').read_bytes()).hexdigest(),
+                  'depthSha256': hashlib.sha256((d/'depth.f32').read_bytes()).hexdigest(),
+                  'idsSha256': hashlib.sha256((d/'ids.png').read_bytes()).hexdigest()}
+    return prompt, images, provenance
+
+
 def check_consistency(d, capture, filename='real.png'):
     """Independent gross foliage-loss guard; deliberately not called object counting."""
     import numpy as np
@@ -54,7 +120,7 @@ def check_consistency(d, capture, filename='real.png'):
         if obj.get('kind')!='plant':continue
         mask=(labels==obj['label']).astype('uint8')
         area=int(mask.sum())
-        if area<30:continue
+        if area<=20:continue
         mask=cv2.dilate(mask,np.ones((17,17),dtype='uint8'))>0
         fraction=float(green[mask].mean())
         checks.append({'id':obj['id'],'visiblePixels':area,'greenSupport':fraction,'supported':fraction>.025})
@@ -72,37 +138,40 @@ def camera_pipeline(d):
     import numpy as np
     import cv2
     capture = json.loads((d / 'capture.json').read_text())
+    backend = route_helpers.real_backend(capture.get('backend'))
     layout = json.loads((d / 'layout.json').read_text())
     width, height = capture['depth']['width'], capture['depth']['height']
     timings = {'captureMs': json.loads((d/'status.json').read_text()).get('timings',{}).get('captureMs')}
     started = time.perf_counter()
-    refs = [b64(ROOT/'refs'/name) for name in ROOM_REFS]
-    sheet = b64(ROOT/'work/cutouts_sheet2.jpg')
-    prompt = ("Render image 1 as a photoreal smartphone interior photo, NOT a new design. IMAGE 1 IS THE EXACT CAMERA AND LAYOUT: "
-        "keep its framing, perspective, object silhouettes, positions, sizes, number, overlaps, crop and empty spaces precisely. "
-        "Do not move the camera, do not invent a ceiling, walls or furniture outside its visible geometry; if this is an open "
-        "cutaway dollhouse view preserve the cutaway. Images 2 and 3 are MATERIAL/IDENTITY references of the same real room "
-        "before rearrangement, NOT layout references. Image 4 is the actual plants and pots inventory. "
-        "Beige painted walls, white chair rail and wainscoting, beige carpet, burgundy curtains, white top-freezer refrigerator, "
-        "ornate dark wood glass-front china hutch, dark rectangular dining table, small black metal/glass tables. "
-        "Use the real plant shapes and pot colours in image 4, no generic replacement plants. North window diffuse daylight, "
-        "soft grow lights. No people, no labels, no text, no collages, no duplicate plants. "
-        f"Output exactly the same aspect as image 1 ({width}:{height}). Layout inventory: {describe(layout)}. "
-        f"Exact camera vertical FOV {capture['camera']['fov']} degrees; all positions in metres. "
-        "The source planning render is authoritative even when reference photos differ.")
+    preview_enabled = os.environ.get('REAL_RESEARCH_PREVIEW', '').lower() in ('1', 'true', 'yes')
+    if (d/'deleted.json').exists(): return
 
     def generate():
         if (d/'real.png').exists() and (d/'provenance.json').exists():
-            previous=json.loads((d/'provenance.json').read_text()).get('real.png')
+            previous=route_helpers.read(d/'provenance.json', {}).get('real.png')
             if previous:return previous
+        if not (d/'real.png').exists() and (d/'real.raw.png').exists():
+            # A process may have stopped between the raw save and final HQ resize.
+            with Image.open(d/'real.raw.png') as recovered:
+                recovered.resize((width,height),Image.Resampling.LANCZOS).save(d/'real.tmp.png')
+            (d/'real.tmp.png').replace(d/'real.png')
+        if (d/'real.png').exists():
+            # An interrupted provenance write must never repurchase an existing HQ.
+            return {**route_helpers.read(d/'conditioning.json', {}),
+                    'route': 'recovered durable HQ; original generation receipt unavailable', 'seconds': 0,
+                    'sha256': hashlib.sha256((d/'real.png').read_bytes()).hexdigest(),
+                    'visiblePlants': route_helpers.visible_plants(d), 'provenanceGap': True}
+        prompt, inputs, conditioning = camera_inputs(d, capture, layout)
+        (d/'conditioning.json').write_text(json.dumps({'prompt':prompt, **conditioning}, indent=2))
         t = time.perf_counter()
-        image = codex.generate(prompt, [b64(d/'view.jpg'), *refs, sheet], timeout=360)
+        image = generate_image(prompt, inputs, timeout=360)
         raw_size = image.size
         image.save(d/'real.raw.png')
-        image.resize((width,height),Image.Resampling.LANCZOS).save(d/'real.png')
+        image.resize((width,height),Image.Resampling.LANCZOS).save(d/'real.tmp.png')
+        (d/'real.tmp.png').replace(d/'real.png')
         return {'route':'ChatGPT subscription image_generation (gpt-image-2)', 'prompt':prompt,
                 'rawSize':raw_size,'size':[width,height],'seconds':time.perf_counter()-t,
-                'sha256':hashlib.sha256((d/'real.png').read_bytes()).hexdigest()}
+                'sha256':hashlib.sha256((d/'real.png').read_bytes()).hexdigest(), **conditioning}
 
     class UnixConnection(http.client.HTTPConnection):
         def connect(self):
@@ -136,29 +205,44 @@ def camera_pipeline(d):
         except Exception as exc:
             status(d,previewError=str(exc),timings=timings.copy())
 
-    status(d,state='generating',timings=timings)
+    status(d,state='generating',preview=False,previewEnabled=preview_enabled,timings=timings,
+           **route_helpers.backend_metadata(backend))
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        pending_preview=pool.submit(make_preview)
+        pending_preview=pool.submit(make_preview) if preview_enabled else None
         provenance=generate()
         timings['hqMs']=provenance['seconds']*1000
         timings['hqElapsedMs']=(time.perf_counter()-started)*1000
         (d/'provenance.json').write_text(json.dumps({'real.png':provenance},indent=2))
+        # A durable photo remains available even when checks or Gaussian lifting fail.
+        status(d,state='photoreal',hq=True,visiblePlants=provenance.get('visiblePlants', []),timings=timings.copy())
+        if (d/'deleted.json').exists(): return
         consistency=check_consistency(d,capture)
         (d/'consistency.json').write_text(json.dumps(consistency,indent=2))
         if not consistency['accepted']:
-            status(d,state='needs-review',hq=False,consistency=consistency,timings=timings.copy(),
+            status(d,state='needs-review',hq=True,consistency=consistency,timings=timings.copy(),
                    error='Generated view lost foliage at most expected plant positions. Tap Real status to regenerate; image not fused.')
             return
         # Publish HQ immediately even if the local GPU preview is still cold.
         status(d,state='photoreal',hq=True,consistency=consistency,timings=timings.copy())
-        pending_preview.result()
+        if pending_preview is not None: pending_preview.result()
     try:
-        preview_call('/unload')
+        if (d/'deleted.json').exists(): return
+        if preview_enabled:
+            try: preview_call('/unload')
+            except Exception as exc: status(d,previewError=str(exc))
         status(d,state='splatting',hq=True,timings=timings)
-        env={k:v for k,v in os.environ.items() if k not in ('PYTHONPATH','PYTHONHOME')}
-        subprocess.run(['$PRIVATE_DATA',
-            str(ROOT/'tools/real_sharp.py'),str(d)],check=True,env=env,timeout=300)
-        alignment=json.loads((d/'alignment.json').read_text())
+        if backend == 'sharp-research':
+            print(route_helpers.SHARP_LICENSE, file=sys.stderr)
+            env={k:v for k,v in os.environ.items() if k not in ('PYTHONPATH','PYTHONHOME')}
+            command = ['$PRIVATE_DATA', str(ROOT/'tools/real_sharp.py'),str(d)]
+            if (d/'sharp.ply').exists(): command.append('--align-only')
+            subprocess.run(command,check=True,env=env,timeout=300)
+            alignment=json.loads((d/'alignment.json').read_text())
+        else:
+            spec=importlib.util.spec_from_file_location('real_depth_shell',ROOT/'tools/real_depth_shell.py')
+            shell=importlib.util.module_from_spec(spec);spec.loader.exec_module(shell)
+            alignment=shell.run(d)
+            if alignment is None: return
         timings.update(alignment['timings'])
         state='ready' if alignment['accepted'] else 'alignment-rejected'
         status(d,state=state,hq=True,alignment=alignment,timings=timings,
@@ -169,8 +253,17 @@ def camera_pipeline(d):
 
 def main():
     d = Path(sys.argv[1]).resolve(); mode = sys.argv[2] if len(sys.argv) > 2 else ""
-    if mode == '--camera':
+    captured = (d/'capture.json').is_file() and (d/'depth.f32').is_file()
+    if mode == '--camera' or (captured and mode in ('', '--splat-only')):
+        if mode == '--splat-only' and not (d/'real.png').is_file():
+            raise ValueError('--splat-only requires an existing HQ real.png')
         return camera_pipeline(d)
+    backend = route_helpers.real_backend()
+    if backend != 'sharp-research' and mode != '--image-only':
+        raise ValueError('Default depth shell requires capture.json and exact captured depth.f32')
+    if backend == 'sharp-research':
+        print(route_helpers.SHARP_LICENSE, file=sys.stderr)
+        status(d, **route_helpers.backend_metadata(backend))
     layout = json.loads((d / "layout.json").read_text())
     note = json.loads((d / "status.json").read_text()).get("note", "") if (d / "status.json").exists() else ""
     refs = [b64(ROOT / "refs" / r) for r in ROOM_REFS]
@@ -187,7 +280,7 @@ def main():
     status(d, state="rendering")
     if mode not in ("--pano-only", "--splat-only"):
         t = time.time()
-        img = codex.generate(base + " Same camera angle as image 3.", [*refs, b64(d / "view.jpg"), b64(d / "top.jpg"), sheet], size="1536x1024")
+        img = generate_image(base + " Same camera angle as image 3.", [*refs, b64(d / "view.jpg"), b64(d / "top.jpg"), sheet], size="1536x1024")
         img.save(d / "real.png")
         prov["real.png"] = {"route": "chatgpt-subscription image_generation (gpt-image-2)", "prompt": base, "size": img.size,
                             "seconds": round(time.time() - t, 1), "sha256": hashlib.sha256((d / "real.png").read_bytes()).hexdigest()}
@@ -197,7 +290,7 @@ def main():
         real = [b64(d / "real.png")] if (d / "real.png").exists() else []
         pano_prompt = (base + " Output a seamless 360-degree equirectangular panorama (2:1, full horizontal wrap, horizon at the "
                        "vertical middle) taken from the middle of the room at standing eye height, so the left and right edges join.")
-        img = codex.generate(pano_prompt, [*refs, b64(d / "view.jpg"), b64(d / "top.jpg"), sheet, *real], size="1536x768")
+        img = generate_image(pano_prompt, [*refs, b64(d / "view.jpg"), b64(d / "top.jpg"), sheet, *real], size="1536x768")
         w, h = img.size
         if abs(w / h - 2) > 0.02:  # crop to exactly 2:1 around the centre
             if w / h > 2: nw = 2 * h; img = img.crop(((w - nw) // 2, 0, (w - nw) // 2 + nw, h))

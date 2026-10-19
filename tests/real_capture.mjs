@@ -5,7 +5,7 @@ import { chromium } from 'playwright-core';
 const key=fs.readFileSync(new URL('../data/.token',import.meta.url),'utf8').trim();
 const state=JSON.parse(fs.readFileSync(new URL('../data/state.json',import.meta.url)));
 const before=fs.readFileSync(new URL('../data/state.json',import.meta.url));
-const b=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const b=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--use-angle=vulkan','--enable-features=Vulkan','--ignore-gpu-blocklist','--enable-gpu']});
 try {
   const p=await b.newPage({viewport:{width:412,height:915},deviceScaleFactor:1});
   let captures=0;
@@ -28,15 +28,16 @@ try {
     const result={capture:c,center:d[Math.floor(h/2)*w+Math.floor(w/2)],outside:d[0],captureMs:c.captureMs,camera:c.camera,original:GR.camera.matrixWorld.toArray(),originalAspect:GR.camera.aspect,size:[w,h]};
     GR.scene.remove(overlay);overlay.geometry.dispose();overlay.material.dispose();roots[0].remove(cube);cube.geometry.dispose();cube.material.dispose();visible.forEach(([o,v])=>o.visible=v);return result;
   });
-  fs.mkdirSync(new URL('../work/',import.meta.url),{recursive:true});fs.writeFileSync(new URL('../work/real-capture-test.json',import.meta.url),JSON.stringify(depth.capture));
+  const evidence=process.env.REAL_TEST_OUT||'$PRIVATE_DATA';fs.mkdirSync(evidence,{recursive:true});fs.writeFileSync(evidence+'/real-capture-test.json',JSON.stringify(depth.capture));
   assert.ok(Math.abs(depth.center-2.5)<.002,'Instanced cube front face must be exactly 2.5 metres');
   assert.equal(depth.outside,0);assert.deepEqual(depth.camera.matrixWorld,depth.original);assert.equal(depth.camera.aspect,depth.originalAspect);
   const countBefore=await p.evaluate(()=>GR.state.items.filter(it=>it.kind==='plant'&&GR.meshOf(it.id)?.userData.billboard).length);
   await p.evaluate(()=>GR.setRealLook(true));await p.waitForTimeout(100);
   assert.equal(await p.evaluate(()=>GR.state.items.filter(it=>it.kind==='plant'&&GR.meshOf(it.id)?.userData.billboard).length),countBefore,'Real never swaps plants to cutouts');
   await p.evaluate(()=>{GR.controls.enableDamping=false;GR.camera.position.x+=.1;GR.controls.update();});await p.waitForTimeout(300);assert.equal(captures,0,'No generation while unsettled');
-  await p.waitForTimeout(2500);console.log('debounce diagnostic',await p.evaluate(()=>({revision:GR.real.revision,enabled:GR.real.enabled,chip:document.querySelector('#real-status').textContent,stats:GR.real.stats})));assert.equal(captures,1,'One exact-view capture after debounce');
+  await p.waitForTimeout(2500);assert.equal(captures,0,'Idle and movement never submit generation');
+  await p.click('#bReal');await p.waitForTimeout(250);assert.equal(captures,1,'Exactly one explicit shutter request');
   await p.evaluate(()=>GR.setRealLook(false));await p.waitForTimeout(300);assert.equal(await p.locator('#real-status').isVisible(),false);
   const invalid=await p.request.post('http://127.0.0.1:8790/api/real/view',{headers:{'X-Garden-Key':key},data:{layout:{},camera:{},depth:{}}});assert.equal(invalid.status(),400);
-  console.log(JSON.stringify({metricDepthM:depth.center,emptyDepthM:depth.outside,exactCamera:true,captureMs:depth.captureMs,debounce:'PASS',noCutoutSwap:'PASS',malformedCapture:'PASS'},null,2));
+  console.log(JSON.stringify({metricDepthM:depth.center,emptyDepthM:depth.outside,exactCamera:true,captureMs:depth.captureMs,explicitShutterNoIdle:'PASS',noCutoutSwap:'PASS',malformedCapture:'PASS'},null,2));
 } finally {await b.close();assert.deepEqual(fs.readFileSync(new URL('../data/state.json',import.meta.url)),before);}

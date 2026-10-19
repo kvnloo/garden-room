@@ -89,3 +89,38 @@
   .alm-shell[data-view="grid"] .alm-scroll { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) { .alm-scroll { scroll-behavior: auto; } }
+
+.alm-tabs { display: flex; gap: 6px; margin: 0 0 10px; }
+.alm-tabs .btn { flex: 1; border-radius: 12px; background: #ffffff05; color: var(--ink-3, #aaa99b); }
+.alm-tabs [aria-selected="true"] { background: #d4bb7a1c; border-color: #d4bb7a66; color: var(--gold, #d4bb7a); }
+.alm-photo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.alm-photo-card { display: flex; flex-direction: column; gap: 7px; min-width: 0; text-align: left; padding: 8px 8px 12px; background: #182018; border: 1px solid #d7c9aa2b; border-radius: 16px; color: var(--ink, #eee9db); cursor: pointer; }
+.alm-photo-card time { font-size: 11px; padding: 0 3px; }
+.alm-photo-card > span { font-size: 10px; line-height: 1.5; color: #bfc7b2; padding: 0 3px; overflow-wrap: anywhere; }
+.alm-photo-media { display: flex; flex-direction: column; position: relative; width: 100%; min-width: 0; margin: 0; border-radius: 11px; overflow: hidden; background: #273024; }
+.alm-photo-media img, .alm-photo-blank { display: block; width: 100%; aspect-ratio: 3/4; object-fit: cover; min-height: 60px; }
+.alm-photo-media figcaption { position: relative; font-size: 9px; padding: 7px 9px; color: #e1d6b8; background: #101710; }
+.alm-photo-media.is-developing img { filter: blur(12px) saturate(.65); transform: scale(1.04); }
+.alm-photo-media.is-developing { background: radial-gradient(ellipse at 20% 30%, #87906a, #263225 45%, #756346); }
+.alm-photo-full { max-width: 760px; margin: auto; min-width: 0; }
+.alm-photo-full .alm-photo-media img { aspect-ratio: auto; max-height: 58dvh; object-fit: contain; }
+.alm-photo-caption { padding: 16px 3px; }
+.alm-photo-caption > time { font: 400 24px var(--serif, Georgia, serif); }
+.alm-photo-caption h2 { font: 400 26px var(--serif, Georgia, serif); }
+.alm-photo-pose { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 6px 12px; font-size: 10px; color: #bdc2af; padding: 12px 0; border-block: 1px solid #dfcf9c22; }
+.alm-photo-pose dd { margin: 0; overflow-wrap: anywhere; font-family: var(--mono, monospace); }
+.alm-photo-actions { display: flex; gap: 7px; flex-wrap: wrap; position: sticky; top: 0; z-index: 2; padding: 8px 0 12px; background: #0f1310f2; }
+.alm-photo-actions .btn { flex: 1; }
+.alm-photo-actions [data-photo-delete] { color: #ecb5a5; }
+.alm-photo-error { color: #ecb5a5; font-size: 12px; }
+.alm-photo-plants { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.alm-photo-plant { border: 1px solid #dfcf9c22; background: #182018; border-radius: 14px; padding: 13px; min-width: 0; overflow-wrap: anywhere; }
+.alm-photo-plant h3 { font: 400 23px var(--serif, Georgia, serif); margin: 6px 0; }
+.alm-photo-plant p { color: #bfc7b2; font-size: 11px; }
+.alm-plant-photos { padding: 12px 0; border-top: 1px solid #dfcf9c22; }
+.alm-plant-photos > div { display: flex; gap: 7px; overflow-x: auto; padding-top: 7px; }
+.alm-plant-photos button { flex: 0 0 100px; min-width: 0; background: transparent; border: 0; padding: 0; color: #c2c7b5; text-align: left; cursor: pointer; }
+.alm-plant-photos button > span { display: block; font-size: 9px; margin-top: 5px; }
+.alm-plant-photos .alm-photo-media img { height: 70px; aspect-ratio: auto; }
+.alm-plant-photos figcaption { font-size: 8px; }
+@media (min-width: 700px) { .alm-photo-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

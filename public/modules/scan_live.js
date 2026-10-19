@@ -1,20 +1,25 @@
 import { RawCamera } from './scan-camera.js';
+import { initScanLayout } from './scan-layout.js';
 
 export function init(GR) {
   const T = GR.THREE;
   let active = false, id = null, seq = 0, busy = false, raw = null, mode = null, lastCapture = 0, lastResult = 0, result = null, error = null, generation = 0;
   let overlay = null, boxes = null, attached = false, interval = null, video = null, stream = null, orientation = null, controller = null;
   const spoken = new Set(), imageCanvas = document.createElement('canvas'), context = imageCanvas.getContext('2d');
-  const plan = () => ({ room: { poly: GR.state.room.poly }, items: GR.state.items.map(({ id, name, kind, x, z, w, d, h, potD, potH, height, locked }) => ({ id, name, kind, x, z, w, d, h, potD, potH, height, locked })) });
+  const plan = () => ({ room: structuredClone(GR.state.room), items: GR.state.items.map((it) => Object.fromEntries(Object.entries(it).filter(([k]) => !k.startsWith('_')))) });
+  let finishedId = null;
+  const layout = initScanLayout(GR, plan);
   function say(text) { try { GR.voice?.say?.(text); } catch {} }
   function status() { return { active, id, mode, state: active ? mode === 'needs-camera' ? 'needs-camera-fallback' : 'scanning' : error ? 'error' : 'stopped', error, frames: seq, busy, lastResult, timings: result?.timings, geometry: result?.geometry, splat: result?.splat }; }
   function attach() {
     if (attached || !GR.ar || !document.querySelector('#ar-scan')) return;
     attached = true; overlay = document.querySelector('#ar-scan');
-    overlay.innerHTML = `<p class="sub">Live recognition stays on your server. Scan slowly sideways, not just turn the phone. Objects need multiple views or depth before they appear on the plan.</p><div class="row"><button class="btn gold" id="scan-live-start">Begin live scan</button><button class="btn" id="scan-live-stop" disabled>Stop scan</button><button class="btn" id="scan-live-camera" hidden>Use 2D camera instead</button></div><p id="scan-live-state" class="sub" role="status" aria-live="polite">Camera and microphone are separate permissions.</p><div id="scan-live-detections"></div><div id="scan-live-corrections"></div><a id="scan-live-splat" class="btn" hidden target="_blank" rel="noopener">View live 3D splat</a>`;
+    overlay.innerHTML = `<p class="sub">Live recognition stays on your server. Scan slowly sideways, not just turn the phone. Objects need multiple views or depth before they appear on the plan.</p><div class="row"><button class="btn gold" id="scan-live-start">Begin live scan</button><button class="btn" id="scan-live-stop" disabled>Stop scan</button><button class="btn" id="scan-live-camera" hidden>Use 2D camera instead</button></div><p id="scan-live-state" class="sub" role="status" aria-live="polite">Camera and microphone are separate permissions.</p><div id="scan-live-detections"></div><div id="scan-live-corrections"></div><div class="row"><button class="btn gold" id="scan-live-review" disabled>Import scan as layout</button><button class="btn" id="scan-live-history">Scan history</button></div><a id="scan-live-splat" class="btn" hidden target="_blank" rel="noopener">View live 3D splat</a>`;
     overlay.querySelector('#scan-live-start').onclick = () => start().catch(fail);
     overlay.querySelector('#scan-live-stop').onclick = () => stop();
     overlay.querySelector('#scan-live-camera').onclick = () => fallback().catch(fail);
+    overlay.querySelector('#scan-live-review').onclick = () => layout.review(id || finishedId).catch(fail);
+    overlay.querySelector('#scan-live-history').onclick = () => layout.history().catch(fail);
     GR.ar.onXRFrame(onXRFrame);
     GR.ar.onLifecycle((event) => {
       if (event === 'end') { raw?.dispose(); raw = null; if (boxes) { disposeBoxes(); boxes.removeFromParent(); boxes = null; } if (active && mode !== 'switching') stop(); }
@@ -29,6 +34,7 @@ export function init(GR) {
     const root = document.querySelector('#gr-ar'); if (root) root.dataset.scanActive = String(active);
     overlay.querySelector('#scan-live-start').disabled = active;
     overlay.querySelector('#scan-live-stop').disabled = !active;
+    overlay.querySelector('#scan-live-review').disabled = !result || !(id || finishedId);
     overlay.querySelector('#scan-live-camera').hidden = mode !== 'needs-camera';
     const text = error || (active ? mode === 'needs-camera' ? 'AR works, but Chrome did not grant raw camera access. End AR with the button below to scan in 2D; no metric layout changes will be claimed.' : `${mode === 'imu' ? '2D camera · no metric depth' : 'AR camera · exact posed keyframes'} · ${seq} frames${result?.timings ? ` · ${Math.round(result.timings.total)} ms GPU pipeline` : ' · waiting for camera'}` : 'Scan stopped. Start shares keyframes with your private server only.');
     overlay.querySelector('#scan-live-state').textContent = text;
@@ -43,7 +49,7 @@ export function init(GR) {
       const button = document.createElement('button'); button.className = 'btn'; button.textContent = 'Apply'; button.onclick = () => apply(c.object); row.append(text, button); corrections.append(row);
     }
     const link = overlay.querySelector('#scan-live-splat'); link.hidden = !result?.splat?.url;
-    if (id) link.href = `/scan-live-view.html?s=${encodeURIComponent(id)}`;
+    if (id || finishedId) link.href = `/scan-live-view.html?s=${encodeURIComponent(id || finishedId)}`;
   }
   async function serverStart() {
     const r = await GR.api('/api/scan_live/start', { method: 'POST', body: JSON.stringify({ plan: plan() }) });
@@ -69,7 +75,7 @@ export function init(GR) {
     } catch (e) { if (gen === generation) { await stop(); fail(e); } throw e; }
   }
   async function stop() {
-    const old = id; active = false; ++generation; busy = false; controller?.abort(); controller = null;
+    const old = id; if (old) finishedId = old; active = false; ++generation; busy = false; controller?.abort(); controller = null;
     raw?.dispose(); raw = null; clearInterval(interval); interval = null; stream?.getTracks().forEach((t) => t.stop()); stream = null;
     video?.remove(); video = null; document.querySelector('#scan-video-boxes')?.remove(); window.removeEventListener('deviceorientation', onOrientation);
     disposeBoxes(); if (boxes) boxes.visible = false; id = null;
@@ -154,7 +160,7 @@ export function init(GR) {
     if (c.props && Object.keys(c.props).length) GR.setProps(c.id, c.props);
     result.corrections = result.corrections.filter((v) => v.object !== objectId); say(`Updated ${c.name}.`); render(); return true;
   }
-  GR.scanLive = { start, stop, status, detections: () => (result?.detections || []).map((d) => structuredClone(d)), apply, open };
+  GR.scanLive = { start, stop, status, detections: () => (result?.detections || []).map((d) => structuredClone(d)), apply, open, review: (scan = id || finishedId) => layout.review(scan), history: layout.history, layout };
   (GR.addHubItem || GR.addDock).call(GR, { key: 'scan_live', label: 'Live room scan', icon: GR.ICON.scan, open });
   window.addEventListener('pagehide', () => { stop(); });
 }

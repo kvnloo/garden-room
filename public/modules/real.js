@@ -1,96 +1,190 @@
-// Exact-camera photoreal generation + calibrated Gaussian views in the planner.
-// No image is screen-pinned after its capture pose changes; selection stays procedural.
+// A shutter captures once. Playback and polling never submit generation jobs.
 export function layoutSnapshot(GR) {
   const keys = ['id','kind','name','src','family','pot','x','z','rot','w','d','h','potD','potH','height','attach','hinge','box'];
-  return { room: GR.state.room, items: GR.state.items.map(it => Object.fromEntries(keys.filter(k => k in it).map(k => [k,it[k]]))), fridgeOpen: !!GR.state.fridgeOpen };
+  return structuredClone({ room: GR.state.room, items: GR.state.items.map(it => Object.fromEntries(keys.filter(k => k in it).map(k => [k,it[k]]))), fridgeOpen: !!GR.state.fridgeOpen });
 }
 
 function base64(bytes) {
   let s = ''; for (let i = 0; i < bytes.length; i += 32768) s += String.fromCharCode(...bytes.subarray(i,i+32768));
   return btoa(s);
 }
-
+const photoKey = p => p ? `${p.revision}/${p.id}` : '';
+const createdTime = p => typeof p.created === 'number' ? p.created * (p.created < 1e12 ? 1000 : 1) : Date.parse(p.created) || 0;
+const unfinished = p => !['ready','failed','needs-review','alignment-rejected','capture-failed'].includes(p.status?.state);
+export function photoImage(p) {
+  // Local previews are deliberately never presented as finished photographs.
+  return p?.status?.hq ? (p.status.hq.url || `${p.base}real.png`) : '';
+}
 export function init(GR) {
   const { THREE, renderer, scene, camera, controls } = GR;
   const style = document.createElement('style');
-  style.textContent = `.real-image{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;opacity:0;transition:opacity .3s;object-fit:fill}.real-chip{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 132px);left:10px;max-width:calc(100% - 20px);z-index:3;padding:7px 12px;border-radius:18px;border:1px solid #b9a88155;background:#171b17dd;color:#e7dfca;font:11px system-ui;cursor:pointer;min-height:44px}.real-chip[hidden]{display:none}`;
+  style.textContent = `
+.real-image{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;opacity:0;object-fit:fill;transition:opacity .12s linear}
+.real-image.developing{filter:blur(18px) saturate(.65);transform:scale(1.06);opacity:.88}
+.real-chip{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 132px);left:10px;max-width:calc(100% - 20px);z-index:3;padding:7px 12px;border-radius:18px;border:1px solid #b9a88155;background:#171b17ee;color:#e7dfca;font:11px system-ui;min-height:44px;cursor:pointer}
+.real-chip[hidden],.real-exit[hidden]{display:none}.real-exit{position:absolute;top:calc(env(safe-area-inset-top) + 70px);right:12px;z-index:4;min-height:44px;padding:9px 14px;border:1px solid #d4bb7a66;border-radius:22px;background:#171b17ee;color:#eee9db;font:12px system-ui;cursor:pointer}
+#bReal.real-shutter{border-radius:50%;border:2px solid #eee9db;outline:1px solid #d4bb7a88;outline-offset:3px;background:#eee9db;color:#182018;min-width:44px;min-height:44px}#bReal.real-shutter svg{width:24px;height:24px}
+.real-flash{position:fixed;inset:0;background:#fff8e9;z-index:50;pointer-events:none;opacity:0}.real-flight{position:fixed;inset:0;z-index:49;pointer-events:none;object-fit:cover;border:3px solid #eee9db;border-radius:6px;box-sizing:border-box;transform-origin:center;width:100%;height:100%}
+.real-album-arrival{animation:real-arrival .45s ease-out}@keyframes real-arrival{50%{filter:brightness(1.8);transform:scale(1.12)}}
+@media(prefers-reduced-motion:reduce){.real-image{transition:none}.real-album-arrival{animation:none}.real-flight{display:none}}
+`;
   document.head.appendChild(style);
-  const image = document.createElement('img'); image.className='real-image';image.alt='Photoreal view at the captured camera';
+  const image = document.createElement('img'); image.className='real-image';image.alt='Generated interpretation at the captured camera';
   const chip = document.createElement('button');chip.className='real-chip';chip.hidden=true;chip.id='real-status';chip.setAttribute('aria-live','polite');
-  document.querySelector('#app').append(image,chip);
-  const root = new THREE.Group();root.name='Calibrated Real splats';
-  let revision=null, signature='', epoch=0, busy=false, lookup=false, enabled=false, lastPose='', stillSince=performance.now();
-  let views=[], splat=null, spark=null, sceneUrl=null, requested=new Set(), lastPoll=0, pinned=null, loadedImage='', loadingScene=false;
-  let stats={captureMs:0,transferMs:0,decodeMs:0,count:0,frames:[],revision:null};
-  let normalPixelRatio=renderer.getPixelRatio();
-  let lastTick=0, lastFrame=performance.now(), requestAfter=0, errorText='';
-  function status(text) {chip.textContent=text;chip.hidden=!enabled;}
-  function pose() {return {position:camera.position.toArray(),quaternion:camera.quaternion.toArray(),matrixWorld:camera.matrixWorld.toArray(),fov:camera.fov,aspect:camera.aspect,near:camera.near,far:camera.far};}
-  function distance(c) {
-    if(!c) return {angle:Infinity,move:Infinity,intrinsics:false};
-    const q=new THREE.Quaternion().fromArray(c.quaternion), p=new THREE.Vector3().fromArray(c.position);
-    return {angle:THREE.MathUtils.radToDeg(q.angleTo(camera.quaternion)),move:p.distanceTo(camera.position),intrinsics:Math.abs(c.fov-camera.fov)<.1&&Math.abs(c.aspect-camera.aspect)<.01};
+  const exit = document.createElement('button');exit.className='real-exit';exit.id='real-exit';exit.textContent='Leave camera';exit.hidden=true;
+  const flash = document.createElement('div');flash.className='real-flash';flash.setAttribute('aria-hidden','true');
+  document.querySelector('#app').append(image,chip,exit,flash);
+  const shutter = document.querySelector('#bReal');
+  shutter.classList.add('real-shutter');shutter.innerHTML=GR.ICON.camera;shutter.removeAttribute('aria-pressed');shutter.setAttribute('aria-label','Camera shutter');shutter.title='Camera · take a photo';
+  const root = new THREE.Group();root.name='Selected camera photo splat';
+  let revision=null, signature='', epoch=0, enabled=false, selection=0, selected=null;
+  let views=[], photos=[], splat=null, spark=null, sceneUrl=null, legacyScene=null, sceneTask=0, desiredScene='';
+  let loadedImage='', imageReady=false, imageTask=0, galleryTask=0, pollTask=0, identifyTask=0, lastPoll=0, lastGallery=0;
+  let normalPixelRatio=renderer.getPixelRatio(), lastFrame=performance.now(), nextLocal=0, audio=null, gallerySignature='', lastLayoutCheck=0;
+  const pending=new Map(), deleted=new Set();
+  const stats={captureMs:0,transferMs:0,decodeMs:0,count:0,frames:[],revision:null};
+  function status(text) {if(chip.textContent!==text)chip.textContent=text;chip.hidden=!enabled;}
+  function notify() {
+    const next=JSON.stringify(photos.map(p=>[photoKey(p),p.status,p.base,p.created,p.plants]));
+    if(next===gallerySignature)return;gallerySignature=next;
+    window.dispatchEvent(new CustomEvent('real-photos-changed'));
   }
-  function same(c) {const d=distance(c);return d.angle<.12&&d.move<.005&&d.intrinsics;}
-  function hideImage() { image.style.transition='none';image.style.opacity='0';pinned=null; }
+  function mergePhoto(previous, incoming) {
+    if(!previous)return incoming;
+    const old=previous.status||{},next=incoming.status||{};
+    const status={...old,...next};
+    if(old.hq&&!next.hq)status.hq=old.hq;
+    if(old.splat||next.splat)status.splat={...old.splat,...next.splat};
+    if(!unfinished(previous)&&['queued','generating','preview','photoreal','splatting'].includes(next.state))status.state=old.state;
+    return {...previous,...incoming,status};
+  }
+  function sorted(list) {return list.sort((a,b)=>createdTime(b)-createdTime(a));}
+  function upsert(p) {if(pending.has(photoKey(p)))pending.set(photoKey(p),p);photos=sorted([...photos.filter(v=>photoKey(v)!==photoKey(p)),p]);notify();}
+  function pose() {return {position:camera.position.toArray(),quaternion:camera.quaternion.toArray(),matrixWorld:camera.matrixWorld.toArray(),target:controls.target.toArray(),fov:camera.fov,aspect:camera.aspect,near:camera.near,far:camera.far};}
+  function distance(c) {
+    if(!c?.position||!c?.quaternion) return {angle:Infinity,move:Infinity,intrinsics:false};
+    return {angle:THREE.MathUtils.radToDeg(new THREE.Quaternion().fromArray(c.quaternion).angleTo(camera.quaternion)),move:new THREE.Vector3().fromArray(c.position).distanceTo(camera.position),intrinsics:Math.abs(c.fov-camera.fov)<.0001&&Math.abs(c.aspect-camera.aspect)<.00001};
+  }
+  function photoOpacity(c) {
+    const d=distance(c);if(!d.intrinsics||d.angle>=15||d.move>=.3)return 0;
+    const t=Math.min(1,Math.max(d.angle/4,d.move/.08));
+    return 1-t*t*(3-2*t);
+  }
+  function coverage() {const d=distance(selected?.camera);return !!splat&&d.intrinsics&&d.angle<15&&d.move<.3;}
+  function hideImage() {image.style.opacity='0';image.classList.remove('developing');}
   function clearScene() {
-    hideImage(); if(splat) {root.remove(splat);splat.dispose();splat=null;}sceneUrl=null;stats.count=0;
+    ++sceneTask;desiredScene='';if(splat){root.remove(splat);splat.dispose();splat=null;}sceneUrl=null;stats.count=0;
     GR.setRealCoverage(false);
   }
+  function clearSelection() {selection++;selected=null;legacyScene=null;loadedImage='';imageReady=false;++imageTask;hideImage();clearScene();}
   function invalidate() {
-    ++epoch;revision=null;views=[];requested=new Set();errorText='';clearScene();loadedImage='';stillSince=performance.now();
-    status('Real · layout changed · generating new view');
+    ++epoch;++pollTask;revision=null;views=[];stats.revision=null;clearSelection();
+    status('Camera · layout changed · tap the shutter to take a photo');
   }
+  function checkLayout() {const next=JSON.stringify(layoutSnapshot(GR));if(signature!==next){signature=next;invalidate();}}
   async function identify() {
-    if(lookup) return;
-    lookup=true;const mine=epoch;
-    try {
-      const r=await GR.api('/api/real/layout',{method:'POST',body:JSON.stringify({layout:layoutSnapshot(GR)})});
-      if(r.error) throw new Error(r.error);
-      if(mine!==epoch) return;
-      revision=r.revision;stats.revision=revision;await poll();
-    } catch(e) {errorText=e.message;status('Real unavailable · tap to retry');requestAfter=performance.now()+10000;}
-    finally {lookup=false;}
+    checkLayout();const mine=epoch,chosen=selection,task=++identifyTask,layout=layoutSnapshot(GR);
+    const r=await GR.api('/api/real/layout',{method:'POST',body:JSON.stringify({layout})});
+    if(mine!==epoch||chosen!==selection||task!==identifyTask)return null;if(r.error)throw new Error(r.error);
+    revision=r.revision;stats.revision=revision;await poll();return r;
   }
   async function loadScene(meta) {
-    if(!meta?.url||meta.url===sceneUrl||loadingScene||meta.count>1_000_000) return;
-    loadingScene=true;const mine=epoch;
-    let next;
+    const url=meta?.url||'';
+    if(url===desiredScene)return;
+    if(!url||meta.count>1_000_000){clearScene();return;}
+    desiredScene=url;const mine=++sceneTask,chosen=selection;let next;
     try {
       const mod=await import('/vendor/spark/dist/spark.module.min.js');
-      if(!spark) {spark=new mod.SparkRenderer({renderer,maxStdDev:Math.sqrt(5),preUpdate:true});scene.add(spark);}
-      const t=performance.now(),res=await fetch(meta.url);
-      if(!res.ok) throw new Error('Splat download '+res.status);
-      const bytes=await res.arrayBuffer();stats.transferMs=performance.now()-t;
-      const decoded=performance.now();
-      next=new mod.SplatMesh({fileBytes:new Uint8Array(bytes),fileType:'splat'});
-      await next.initialized;
-      stats.decodeMs=performance.now()-decoded;
-      if(mine!==epoch) {next.dispose();return;}
-      if(splat) {root.remove(splat);splat.dispose();}
-      splat=next;root.add(next);sceneUrl=meta.url;stats.count=meta.count;
-    } catch(e) {if(next&&next!==splat)next.dispose();errorText=e.message;status('Real · splat unavailable');console.warn('Real splat',e);}
-    finally {loadingScene=false;}
+      if(mine!==sceneTask||chosen!==selection)return;
+      if(!spark){spark=new mod.SparkRenderer({renderer,maxStdDev:Math.sqrt(5),preUpdate:true});scene.add(spark);}
+      const t=performance.now(),res=await fetch(url);if(!res.ok)throw new Error('Splat download '+res.status);
+      const bytes=await res.arrayBuffer(),transferMs=performance.now()-t,decoded=performance.now();
+      if(mine!==sceneTask||chosen!==selection)return;
+      next=new mod.SplatMesh({fileBytes:new Uint8Array(bytes),fileType:'splat'});await next.initialized;
+      if(mine!==sceneTask||chosen!==selection){next.dispose();return;}
+      if(splat){root.remove(splat);splat.dispose();}
+      splat=next;root.add(next);sceneUrl=url;stats.count=meta.count||0;stats.transferMs=transferMs;stats.decodeMs=performance.now()-decoded;
+      renderPhoto();
+      // Even when both assets were ready before the first poll, render coarse
+      // once before downloading/refining the selected photo's fine representation.
+      if(url===selected?.status?.splat?.coarse?.url)requestAnimationFrame(()=>requestAnimationFrame(()=>{if(mine===sceneTask&&chosen===selection)selectSplat();}));
+    } catch(e){if(next&&next!==splat)next.dispose();if(mine===sceneTask){status('Camera · 3D view unavailable');console.warn('Camera splat',e);}}
+  }
+  function selectSplat() {
+    if(!enabled||!selected){void loadScene(null);return;}
+    const source=selected?.status?.splat;
+    // A single shot wins over the old fused manifest, including during coarse loading.
+    const legacy=selected.status?.state==='ready'&&photoImage(selected)?legacyScene:null;
+    const firstCoarse=source?.coarse?.url&&sceneUrl!==source.coarse.url&&sceneUrl!==source.fine?.url;
+    const meta=firstCoarse?source.coarse:source?.fine?.url?source.fine:source?.coarse?.url?source.coarse:source?.url?source:source?null:legacy;
+    void loadScene(meta);
+  }
+  async function refreshPhotos() {
+    const mine=++galleryTask;
+    const r=await GR.api('/api/real/photos');
+    if(mine!==galleryTask)return photos;
+    if(r.error||!Array.isArray(r.photos))throw new Error(r.error||'Photos unavailable');
+    const incoming=r.photos.filter(p=>!deleted.has(photoKey(p))).map(p=>mergePhoto(photos.find(old=>photoKey(old)===photoKey(p)),p));
+    const keys=new Set(incoming.map(photoKey));
+    // Retain submissions until the all-revisions index publishes them.
+    photos=sorted([...incoming,...[...pending.values()].filter(p=>!keys.has(photoKey(p))&&!deleted.has(photoKey(p)))]);
+    for(const p of incoming)if(!unfinished(p))pending.delete(photoKey(p));
+    const updated=photos.find(p=>photoKey(p)===photoKey(selected));
+    if(updated){selected=updated;selectSplat();renderPhoto();}
+    notify();return photos;
   }
   async function poll() {
     if(!revision)return;
-    const mine=epoch,rev=revision;
-    const r=await GR.api(`/api/real/${rev}/views`);
-    if(mine!==epoch)return;
-    views=r.views||[];
-    await loadScene(r.scene);
+    const mine=++pollTask,rev=revision,chosen=selection,layoutEpoch=epoch;
+    const r=await GR.api(`/api/real/${encodeURIComponent(rev)}/views`);
+    if(mine!==pollTask||layoutEpoch!==epoch||rev!==revision||chosen!==selection)return;
+    if(r.error)throw new Error(r.error);
+    views=(r.views||[]).map(v=>({...v,revision:rev})).filter(v=>!deleted.has(photoKey(v)));legacyScene=r.scene||null;
+    const updated=views.find(v=>photoKey(v)===photoKey(selected));
+    if(updated&&!deleted.has(photoKey(updated))){selected=mergePhoto(selected,updated);upsert(selected);}
+    selectSplat();renderPhoto();
   }
-  function displayPhoto() {
-    const v=views.filter(v=>same(v.camera)&&(v.status.hq||v.status.preview)).sort((a,b)=>Number(!!b.status.alignment?.accepted)-Number(!!a.status.alignment?.accepted)||Number(!!b.status.hq)-Number(!!a.status.hq))[0];
-    if(!v) {if(pinned)hideImage();return;}
-    const file=v.status.hq?'real.png':'preview.png',url=v.base+file;
-    if(loadedImage!==url) {
-      loadedImage=url;const mine=epoch;
-      image.onload=()=>{if(mine===epoch&&enabled&&same(v.camera)){pinned=v.camera;image.style.transition='opacity .3s';image.style.opacity='1';}};
-      image.src=url;
-    } else if(same(v.camera)) {pinned=v.camera;image.style.transition='opacity .3s';image.style.opacity='1';}
-    const rejected=v.status.state==='alignment-rejected';
-    status(`Real · ${!requested.has(v.id)?'cached · ':''}${rejected?'photoreal · depth fit rejected':v.status.hq?'photoreal':'preview · refining'}`);
+  function renderPhoto() {
+    if(!enabled||!selected){hideImage();GR.setRealCoverage(false);return;}
+    const opacity=photoOpacity(selected.camera),hq=photoImage(selected),waiting=unfinished(selected);
+    const url=hq||selected.beauty||(selected.base?`${selected.base}view.jpg`:'');
+    if(url!==loadedImage){
+      loadedImage=url;imageReady=false;hideImage();const mine=++imageTask,chosen=selection;
+      const loader=new Image();loader.onload=()=>{if(mine!==imageTask||chosen!==selection||!enabled)return;image.src=url;imageReady=true;renderPhoto();};
+      loader.onerror=()=>{if(mine===imageTask){imageReady=false;hideImage();}};loader.src=url;
+    }
+    const developing=!hq;
+    image.classList.toggle('developing',developing&&waiting&&imageReady&&opacity>0);
+    image.alt=developing?'Blurred procedural capture · photo developing':'Generated photo interpretation at its capture pose';
+    image.style.opacity=String(imageReady&&(hq||waiting)?opacity*(developing ? .88 : 1):0);
+    const covered=coverage();GR.setRealCoverage(covered);
+    if(opacity===0&&!covered)status('Camera · outside this photo’s view · procedural room');
+    else if(!hq&&waiting)status('Photo developing · blurred procedural capture · saved in Almanac');
+    else if(['failed','capture-failed','needs-review'].includes(selected.status?.state))status('Photo needs review · open Almanac');
+    else if(covered&&opacity<.99)status('Camera · selected photo’s 3D view');
+    else if(hq)status('Generated photo · saved in Almanac');
+    else status('Camera · procedural room · tap the shutter to take a photo');
+  }
+  function shutterFeedback(data) {
+    const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+    flash.getAnimations().forEach(a=>a.cancel());
+    flash.animate([{opacity:reduced ? .16 : .8},{opacity:0}],{duration:reduced?80:180,easing:'ease-out'});
+    try {
+      const Audio=window.AudioContext||window.webkitAudioContext;
+      if(Audio){
+        audio||=new Audio();if(audio.state==='suspended')void audio.resume().catch(()=>{});
+        const at=audio.currentTime,osc=audio.createOscillator(),gain=audio.createGain();osc.type='triangle';
+        osc.frequency.setValueAtTime(900,at);osc.frequency.exponentialRampToValueAtTime(180,at+.075);
+        gain.gain.setValueAtTime(.055,at);gain.gain.exponentialRampToValueAtTime(.001,at+.095);
+        osc.connect(gain);gain.connect(audio.destination);osc.start(at);osc.stop(at+.1);osc.onended=()=>{osc.disconnect();gain.disconnect();};
+      }
+    } catch { /* Sound is optional when the browser blocks audio. */ }
+    const album=document.querySelector('#dock [data-panel="almanac"]');
+    if(reduced){album?.classList.add('real-album-arrival');setTimeout(()=>album?.classList.remove('real-album-arrival'),400);return;}
+    const thumb=document.createElement('img');thumb.className='real-flight';thumb.src=data.view;thumb.alt='';thumb.setAttribute('aria-hidden','true');document.body.append(thumb);
+    const box=album?.getBoundingClientRect(),x=box?box.left+box.width/2:innerWidth-40,y=box?box.top+box.height/2:innerHeight-40;
+    const animation=thumb.animate([{transform:'translate(0,0) scale(1)',opacity:.95},{transform:`translate(${x-innerWidth/2}px,${y-innerHeight/2}px) scale(.055)`,opacity:.2}],{duration:620,easing:'cubic-bezier(.2,.8,.2,1)',fill:'forwards'});
+    animation.finished.catch(()=>{}).finally(()=>{thumb.remove();album?.classList.add('real-album-arrival');setTimeout(()=>album?.classList.remove('real-album-arrival'),450);});
   }
   function readTarget(target) {
     const {width:w,height:h}=target,pixels=new Uint8Array(w*h*4);renderer.readRenderTargetPixels(target,0,0,w,h,pixels);
@@ -148,59 +242,85 @@ vec4 p=modelViewMatrix*local;metricZ=-p.z;gl_Position=projectionMatrix*p;}`;
     }
     const depth=new Float32Array(w*h);
     for(let i=0;i<depth.length;i++){const j=i*4;depth[i]=(depthBytes[j]+depthBytes[j+1]*256+depthBytes[j+2]*65536)/1000;}
-    const result={camera:c,view:toImage(beauty,w,h,'image/jpeg'),ids:toImage(ids,w,h,'image/png'),
+    const visibleIds=new Set();
+    for(let i=0;i<ids.length;i+=4)visibleIds.add(ids[i]+ids[i+1]*256);
+    const plants=GR.state.items.filter((it,i)=>it.kind==='plant'&&visibleIds.has(i+1)).map(it=>({id:it.id,name:it.name,family:it.family,src:it.src}));
+    const result={camera:c,plants,view:toImage(beauty,w,h,'image/jpeg'),ids:toImage(ids,w,h,'image/png'),
       depth:{width:w,height:h,encoding:'float32-le-meters-camera-z',data:base64(new Uint8Array(depth.buffer))},
       objects:GR.state.items.map((it,i)=>({id:it.id,kind:it.kind,label:i+1})),layout:layoutSnapshot(GR)};
     result.captureMs=performance.now()-started;stats.captureMs=result.captureMs;return result;
   }
   async function requestView(retry=false) {
-    if(busy||!revision)return null;
-    const mine=epoch;busy=true;status('Real · capturing current view');
+    // No await is allowed above capture: this is the tap's camera, even if a
+    // request or layout lookup later stalls while the user keeps moving.
+    let data;
+    try {checkLayout();data=capture();} catch(e){GR.toast('Camera capture failed: '+e.message);return null;}
+    GR.setRealLook(true);clearSelection();
+    const mine=epoch,chosen=selection,local={id:`shutter-${++nextLocal}`,revision:'pending',camera:data.camera,plants:data.plants,created:Date.now()/1000,beauty:data.view,status:{state:'queued'}};
+    selected=local;pending.set(photoKey(local),local);upsert(local);shutterFeedback(data);renderPhoto();
     try {
-      const data=capture();data.retry=!!retry;
+      data.retry=!!retry;data.explicit=true;
       const r=await GR.api('/api/real/view',{method:'POST',body:JSON.stringify(data)});
       if(r.error)throw new Error(r.error);
-      if(mine!==epoch)return null;
-      if(!r.cached)requested.add(r.id);status(r.cached?'Real · cached':'Real · generating preview + photoreal');await poll();return r;
-    } catch(e) {errorText=e.message;status('Real · '+e.message);requestAfter=performance.now()+15000;return null;}
-    finally {busy=false;}
-  }
-  function coverage() {
-    return views.some(v=>v.status.alignment?.accepted&&distance(v.camera).angle<25&&distance(v.camera).move<.65&&distance(v.camera).intrinsics);
+      if(!r.id||!r.revision)throw new Error('Photo receipt missing');
+      pending.delete(photoKey(local));photos=photos.filter(p=>photoKey(p)!==photoKey(local));
+      const saved={...local,id:r.id,revision:r.revision,base:r.base||`/renders/real/${r.revision}/${r.id}/`,status:r.status||{state:'queued'}};
+      if(!deleted.has(photoKey(saved))){pending.set(photoKey(saved),saved);upsert(saved);}
+      if(mine===epoch&&chosen===selection&&enabled&&!deleted.has(photoKey(saved))){
+        selected=saved;revision=r.revision;stats.revision=revision;renderPhoto();void poll().catch(()=>{});
+      }
+      void refreshPhotos().catch(()=>{});return r;
+    } catch(e){
+      pending.delete(photoKey(local));local.status={state:'capture-failed',error:e.message};upsert(local);
+      if(mine===epoch&&chosen===selection){selected=local;renderPhoto();status('Photo could not be saved · '+e.message);}
+      return null;
+    }
   }
   function setEnabled(on) {
+    on=!!on;
     if(on&&!enabled){normalPixelRatio=renderer.getPixelRatio();renderer.setPixelRatio(Math.min(devicePixelRatio,1.25));}
-    if(!on&&enabled)renderer.setPixelRatio(normalPixelRatio);
-    enabled=on;root.visible=on;chip.hidden=!on;
+    if(!on&&enabled){renderer.setPixelRatio(normalPixelRatio);selection++;++imageTask;loadedImage='';imageReady=false;clearScene();}
+    enabled=on;root.visible=on;chip.hidden=!on;exit.hidden=!on;
     if(!on){hideImage();GR.setRealCoverage(false);return;}
-    stillSince=performance.now();status('Real · hold still to generate');if(!revision)identify();
+    status('Camera · tap the shutter to take a photo');selectSplat();renderPhoto();
   }
-  chip.onclick=()=>{
-    if(errorText){errorText='';requestAfter=0;revision?requestView():identify();}
-    else GR.openPanel('real');
-  };
-  GR.addPanel('real',()=>{
-    const failures=views.filter(v=>['alignment-rejected','needs-review','failed'].includes(v.status.state));
-    GR.openSheet('real',`<h3>Real <em>current view</em></h3><p class="sub">Hold the camera still for 0.6 seconds. A depth-guided local preview is refined by ChatGPT. Calibrated splats stay interactive as you move.</p><p class="micro">${stats.count.toLocaleString()} GAUSSIANS · ${views.length} CAPTURED VIEWS</p>${failures.map(v=>`<p class="sub">${GR.esc(v.status.error||v.status.state)} · ${v.status.alignment?.medianM?.toFixed(2)||'—'} m depth residual</p>`).join('')}<button class="btn gold" id="real-generate">Generate here</button><p class="micro">Generated interpretation, not a measured room scan. Layout changes clear old views. Experimental research pipeline: SHARP weights are research-only, not production-licensed.</p>`);
-    document.querySelector('#real-generate').onclick=()=>{GR.closeSheet();GR.setRealLook(true);requestView(failures.some(v=>same(v.camera)));};
-  });
-  GR.real={capture,requestView,poll,identify,setEnabled,get stats(){return stats;},get views(){return views;},get revision(){return revision;},get enabled(){return enabled;},get coverage(){return coverage();}};
+  function choose(photo) {
+    checkLayout();clearSelection();selected=photo;revision=photo.revision;stats.revision=revision;
+    GR.setRealLook(true);selectSplat();renderPhoto();void poll().catch(()=>{});
+  }
+  function goToView(photo) {
+    if(!photo?.camera)return;
+    GR.almanac?.close();GR.closeSheet();
+    const c=photo.camera,q=new THREE.Quaternion().fromArray(c.quaternion),forward=new THREE.Vector3(0,0,-1).applyQuaternion(q);
+    const distance=Math.max(.1,controls.target.distanceTo(camera.position));
+    controls.enabled=true;controls.update();camera.position.fromArray(c.position);camera.quaternion.copy(q);
+    controls.target.copy(camera.position).addScaledVector(forward,c.target?new THREE.Vector3().fromArray(c.target).distanceTo(camera.position):distance);
+    camera.fov=c.fov;camera.near=c.near??camera.near;camera.far=c.far??camera.far;camera.updateProjectionMatrix();controls.update();camera.updateMatrixWorld();
+    choose(photo);
+  }
+  function walkAround(photo) {goToView(photo);GR.toast('Drag to walk around · nearby 3D view only');}
+  function openPhoto(photo) {if(photo&&!deleted.has(photoKey(photo)))upsert(photo);return GR.almanac?.openPhoto(photo);}
+  async function deletePhoto(photo) {
+    const key=photoKey(photo);
+    if(photo.revision==='pending'&&photo.status?.state!=='capture-failed')throw new Error('Wait for the photo to be saved');
+    if(photo.revision!=='pending'){
+      const r=await GR.api(`/api/real/photo/${encodeURIComponent(photo.revision)}/${encodeURIComponent(photo.id)}/delete`,{method:'POST',body:'{}'});
+      if(r.error||!r.ok)throw new Error(r.error||'Photo could not be deleted');
+    }
+    deleted.add(key);++galleryTask;pending.delete(key);photos=photos.filter(p=>photoKey(p)!==key);views=views.filter(p=>photoKey(p)!==key);
+    if(photoKey(selected)===key){clearSelection();status('Photo deleted · procedural room');}
+    notify();return true;
+  }
+  chip.onclick=()=>{if(selected)openPhoto(selected);else GR.almanac?.openPhotos();};
+  exit.onclick=()=>{GR.setRealLook(false);shutter.focus();};
+  GR.addPanel('real',()=>GR.almanac?.openPhotos());
+  GR.real={capture,requestView,poll,identify,setEnabled,openPhoto,goToView,walkAround,refreshPhotos,deletePhoto,
+    get stats(){return stats;},get views(){return views;},get photos(){return photos;},get revision(){return revision;},get enabled(){return enabled;},get coverage(){return coverage();},get selected(){return selected;},get sceneUrl(){return sceneUrl;}};
   GR.setRealScene(root);signature=JSON.stringify(layoutSnapshot(GR));setEnabled(GR.realLook);
   GR.onFrame(()=>{
     const now=performance.now();if(enabled&&splat){stats.frames.push(now-lastFrame);if(stats.frames.length>600)stats.frames.shift();}lastFrame=now;
-    if(!enabled)return;
-    const key=JSON.stringify([camera.position.toArray().map(x=>Math.round(x*10000)),camera.quaternion.toArray().map(x=>Math.round(x*10000)),camera.fov,camera.aspect]);
-    if(key!==lastPose){lastPose=key;stillSince=now;if(pinned&&!same(pinned))hideImage();}
-    if(now-lastTick<150)return;lastTick=now;
-    const next=JSON.stringify(layoutSnapshot(GR));if(signature!==next){signature=next;invalidate();}
-    if(!revision){if(!lookup&&now>requestAfter)identify();return;}
-    const covered=!!splat&&coverage();GR.setRealCoverage(covered);
-    if(now-lastPoll>1200){lastPoll=now;poll().catch(e=>{errorText=e.message;});}
-    displayPhoto();
-    if(!pinned&&covered)status('Real · live Gaussian view');
-    const near=views.find(v=>{const d=distance(v.camera);return d.angle<22&&d.move<.6&&d.intrinsics;});
-    const exact=views.find(v=>same(v.camera));
-    if(exact&&['needs-review','failed'].includes(exact.status.state))status('Real · generated view needs review · tap');
-    if(!near&&!busy&&now-stillSince>600&&now>requestAfter){requestAfter=now+6000;requestView();}
+    if(now-lastLayoutCheck>150){lastLayoutCheck=now;checkLayout();}
+    if(enabled){renderPhoto();if(revision&&now-lastPoll>1200){lastPoll=now;void poll().catch(()=>{});}}
+    if(pending.size&&now-lastGallery>1500){lastGallery=now;void refreshPhotos().catch(()=>{});}
   });
 }

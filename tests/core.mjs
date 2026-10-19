@@ -4,9 +4,9 @@ import { chromium } from 'playwright-core';
 const base=process.argv[2]||'http://127.0.0.1:8790';
 const key=fs.readFileSync(new URL('../data/.token',import.meta.url),'utf8').trim();
 const current=JSON.parse(fs.readFileSync(new URL('../data/state.json',import.meta.url),'utf8'));
-const dir=new URL('../work/shots/',import.meta.url).pathname;
+const dir=process.env.GARDEN_TEST_SHOTS||'$PRIVATE_DATA';fs.mkdirSync(dir,{recursive:true});
 const beforeHash=fs.readFileSync(new URL('../data/state.json',import.meta.url),'utf8');
-const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--use-angle=vulkan','--enable-features=Vulkan','--ignore-gpu-blocklist','--enable-gpu']});
 const page=await browser.newPage({viewport:{width:412,height:915},deviceScaleFactor:1,isMobile:true,hasTouch:true});
 const errors=[];page.on('pageerror',e=>errors.push(String(e)));
 await page.route('**/api/state',r=>r.fulfill({json:r.request().method()==='GET'?{}:{ok:true}}));
@@ -37,7 +37,7 @@ try {
  const photoFallbacks=await page.evaluate(()=>GR.state.items.filter(i=>i.kind==='plant' && GR.meshOf(i.id)?.userData.billboard).length);
  await page.evaluate(()=>{GR.closeSheet();GR.setRealLook(true)});await page.waitForTimeout(800);
  assert.equal(await page.evaluate(()=>GR.state.items.filter(i=>i.kind==='plant' && GR.meshOf(i.id)?.userData.billboard).length),photoFallbacks,'Real must not swap procedural plants to photo cutouts');
- assert.equal(await page.getAttribute('#bReal','aria-pressed'),'true');await page.screenshot({path:dir+'core-real.png'});
+ assert.equal(await page.getAttribute('#bReal','aria-pressed'),null,'Camera is a shutter, not a toggle');assert.equal(await page.getAttribute('#bReal','aria-label'),'Camera shutter');assert.equal(await page.evaluate(()=>GR.real.enabled),true);await page.screenshot({path:dir+'core-real.png'});
  await page.evaluate(()=>{GR.setRealLook(false);GR.setView('top')});await page.waitForTimeout(1000);await page.screenshot({path:dir+'core-top.png'});results['Real requests camera-conditioned photoreal without cutout swap']='PASS';
  const metrics=await page.evaluate(()=>{
    const e=__garden.evaluate(GR.state.items,GR.state.room),ps=GR.state.items.filter(i=>i.kind==='plant');

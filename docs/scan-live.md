@@ -32,6 +32,10 @@ If raw camera access is absent, choose **Use 2D camera instead**. The app ends i
 
 Manual two-corner alignment, rulers and measurement assignment remain available under Orient/Measure/Ruler.
 
+## Import a scan as a saved layout
+
+Whole-scan proposals, side-by-side review, manual placement, save/apply/undo and finished-scan history are documented in [Import a room scan as a layout](scan-layout.md). Nonmetric 2D/COLMAP observations require explicit manual placement; they never silently become room metres.
+
 ## Geometry and reconstruction
 
 `scan_live_geometry.py`:

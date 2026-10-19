@@ -59,4 +59,25 @@ class ProxyTests(unittest.TestCase):
         h=Request(); route.handle(h,'GET',f'/api/scan_live/{id}/splat'); self.assertEqual(h.status,200); self.assertEqual(h.wfile.getvalue(),splat)
         h=Request(); route.handle(h,'GET',f'/api/scan_live/{id}/status'); self.assertEqual(json.loads(h.wfile.getvalue()),status)
 
+    def test_history_and_rebased_proposal_survive_worker_exit(self):
+        fixture=json.loads((Path(__file__).parent/'fixtures/scan-real.json').read_text()); sid='c'*24; target=route.DATA/sid;target.mkdir(parents=True)
+        scan=fixture['scan'];(target/'latest.json').write_text(json.dumps(scan))
+        h=Request();route.handle(h,'GET','/api/scan_live/history'); self.assertEqual(h.status,200); self.assertEqual(h.result[0]['id'],sid)
+        h=Request(dict(plan=fixture['plan']));route.handle(h,'POST',f'/api/scan_live/{sid}/proposal'); self.assertEqual(h.status,200);self.assertEqual(h.result['selected'],0);self.assertEqual(h.result['items'],fixture['plan']['items'])
+        matches=[c for c in h.result['changes'] if c['object'] and c['id']];self.assertGreater(len(matches),3)
+        c=matches[0];it=next(i for i in fixture['plan']['items'] if i['id']==c['id'])
+        h=Request(dict(plan=fixture['plan'],decisions={c['object']:dict(itemId=c['id'],x=it['x']+.02,z=it['z'],include=True)}));route.handle(h,'POST',f'/api/scan_live/{sid}/proposal');self.assertEqual(h.status,200);self.assertTrue(next(v for v in h.result['changes'] if v['object']==c['object'])['manualPosition'])
+        self.assertEqual(json.loads((target/'latest.json').read_text()),scan,'review never modifies source scan')
+    def test_proposal_rejects_malformed_input_and_traversal(self):
+        sid='d'*24;target=route.DATA/sid;target.mkdir(parents=True);(target/'latest.json').write_text('{}')
+        for body in [dict(plan={}),dict(plan=dict(items=[],room=dict(poly=[[0,0],[1,0],[float('nan'),1]])))]:
+            h=Request(body);route.handle(h,'POST',f'/api/scan_live/{sid}/proposal');self.assertEqual(h.status,400)
+        h=Request({});route.handle(h,'POST','/api/scan_live/'+'e'*24+'/proposal');self.assertEqual(h.status,404)
+        fixture=json.loads((Path(__file__).parent/'fixtures/scan-real.json').read_text())
+        for rot in [.5,True,4]:
+            fixture['plan']['items'][0]['rot']=rot
+            h=Request(dict(plan=fixture['plan']));route.handle(h,'POST',f'/api/scan_live/{sid}/proposal');self.assertEqual(h.status,400)
+        (target/'latest.json').write_text(' '*5_000_001)
+        h=Request(dict(plan=fixture['plan']));route.handle(h,'POST',f'/api/scan_live/{sid}/proposal');self.assertEqual(h.status,413)
+
 if __name__=='__main__': unittest.main(verbosity=2)
