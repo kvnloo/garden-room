@@ -297,7 +297,7 @@ function carpetTex() { const c = document.createElement('canvas'); c.width = c.h
 function buildRoom() {
   roomGroup.clear(); walls = []; const R = state.room; EDGE_CACHE.delete(R); ZONE_CACHE.delete(R); normWin(R);
   const shape = new THREE.Shape(R.poly.map(([x, z]) => new THREE.Vector2(x, -z)));
-  const floor = new THREE.Mesh(new THREE.ShapeGeometry(shape), STD({ map: carpetTex(), roughness: 1 })); floorMesh = floor; if(realLook) floor.material.map=realCarpet; floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; roomGroup.add(floor);
+  const floor = new THREE.Mesh(new THREE.ShapeGeometry(shape), STD({ map: carpetTex(), roughness: 1 })); floorMesh = floor; floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; roomGroup.add(floor);
   heatCanvas = document.createElement('canvas'); heatCanvas.width = heatCanvas.height = 48; heatTex = new THREE.CanvasTexture(heatCanvas); heatTex.colorSpace = THREE.SRGBColorSpace;
   const B = bounds(R), hg = new THREE.ShapeGeometry(shape); const uv = hg.attributes.uv, pos = hg.attributes.position;
   for (let i = 0; i < uv.count; i++) uv.setXY(i, (pos.getX(i) - B.x0) / (B.x1 - B.x0), 1 - (-pos.getY(i) - B.z0) / (B.z1 - B.z0));
@@ -369,12 +369,12 @@ function buildItemMesh(it) {
     const pool = add(new THREE.Mesh(new THREE.CircleGeometry(s.radius, 40), new THREE.MeshBasicMaterial({ color: s.color, transparent: true, opacity: 0.07, depthWrite: false }))); pool.rotation.x = -Math.PI / 2; pool.position.y = 0.006; pool.raycast = () => {}; pool.castShadow = false;
   } else if (it.kind === 'plant') {
     const pot = createPot({ style: it.pot || 'dark_plastic', diameter: it.potD, height: it.potH, width: it.box ? it.w : undefined, depth: it.box ? it.d : undefined, seed: seedOf(it.id) });
-    add(pot.group); pot.group.visible = !realLook; g.userData.soilY = pot.soilY;
+    add(pot.group); g.userData.soilY = pot.soilY;
     const ring = new THREE.Mesh(it.box ? new THREE.RingGeometry(0.01, 0.02, 4) : new THREE.RingGeometry(it.w / 2 + 0.01, it.w / 2 + 0.03, 40), new THREE.MeshBasicMaterial({ color: 0x8fd18a, transparent: true, opacity: 0.9, depthWrite: false }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.008; ring.raycast = () => {}; g.add(ring); g.userData.ring = ring;
-    const holder = new THREE.Group(); holder.position.y = realLook ? 0 : pot.soilY; g.add(holder); g.userData.holder = holder;
-    const photoMode = realLook;
-    loadFamily(realLook || PLANT_META[it.id]?.approved === false ? null : it.family).then((mod) => {
+    const holder = new THREE.Group(); holder.position.y = pot.soilY; g.add(holder); g.userData.holder = holder;
+    const photoMode = false;
+    loadFamily(PLANT_META[it.id]?.approved === false ? null : it.family).then((mod) => {
       if (!photoMode && mod && mod.createPlant) { try { const m = mod.createPlant({ height: it.height, spread: Math.max(it.w, it.potD * 1.6), potDiameter: it.potD, width: it.box ? it.w : undefined, depth: it.box ? it.d : undefined, seed: seedOf(it.id) }); add(m); holder.add(m); return; } catch (e) { console.warn('model', it.family, e); } }
       const tex = PLANT_TEX[it.src]; if (!tex) return; const a = tex.image.width / tex.image.height, H = photoMode ? it.h : it.height + it.potH * 0.2;
       const spr = new THREE.Mesh(new THREE.PlaneGeometry(H * a, H), new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1 }));
@@ -573,7 +573,16 @@ function miniMap(items, size = 132) {
   return cv.toDataURL();
 }
 
-let suggestions = [], polls = [];
+let suggestions = (() => { try { return JSON.parse(localStorage.getItem('gr_suggestions') || '[]'); } catch { return []; } })(), polls = [], suggestBusy = false;
+function persistSuggestions() { try { localStorage.setItem('gr_suggestions', JSON.stringify(suggestions.map((x) => ({ score: x.score, lightSat: x.lightSat, warns: x.warns, items: x.items.map(strip) })))); } catch {} }
+function applyPlan(items, msg) { state.items = items.map((i) => strip({ ...i })); syncMeshes(true); rescore(); save(); drawSelection?.(); toast(msg); }
+function drawSuggestions(status) {
+  const output = document.getElementById('sOut'); if (!output || openPanel !== 'suggest') return;
+  const busy = status ?? (suggestBusy ? 'Packing spaced pots…' : '');
+  output.innerHTML = suggestions.map((s, i) => { const n = s.warns.filter((w) => !w.startsWith('(soft)')).length; return `<div class="card"><img src="${miniMap(s.items)}"><b>${Math.round(s.score)}</b><span class="micro">LIGHT ${Math.round(s.lightSat * 100)}% · ${n ? n + ' ISSUES' : 'CLEAR'}</span><button class="btn" data-i="${i}" ${n ? 'disabled' : ''}>Use</button></div>`; }).join('') + (busy ? `<span class="micro">${busy}</span>` : (suggestions.length ? '' : '<span class="micro">TAP SUGGEST 3</span>'));
+  output.querySelectorAll('button[data-i]').forEach((b) => b.onclick = () => { const pr = suggestions[+b.dataset.i]; if (pr.warns.some((w) => !w.startsWith('(soft)'))) return toast('Not safe to apply yet'); applyPlan(pr.items, 'Applied — switch to Edit to tweak'); });
+  const go = document.getElementById('sGo'); if (go) go.disabled = suggestBusy;
+}
 function stopPolls() { polls.forEach(clearInterval); polls = []; }
 const PANELS = {
   suggest() {
@@ -583,16 +592,19 @@ const PANELS = {
       <div class="row"><button class="btn gold" id="sGo">${ICON.sparkle}Suggest 3</button></div><div class="cards" id="sOut"></div>`);
     $('[data-panel=layouts]').onclick = () => PANELS.layouts();
     $('#sW').oninput = (e) => { winWeight = parseFloat(e.target.value); rescore(); };
+    drawSuggestions();
     $('#sGo').onclick = async () => {
-      const output = $('#sOut'), button = $('#sGo'), mf = $('#sF').value === '1', source = state.items.map(strip);
-      button.disabled = true; output.innerHTML = '<span class="micro">Packing spaced pots…</span>'; suggestions = [];
-      for (const seed of [1, 77, 7920]) {
-        await new Promise((r)=>setTimeout(r,100)); if(openPanel !== 'suggest' || !output.isConnected) break;
-        const proposal = await optimizeAsync(source, state.room, { seed, moveFurniture: mf, winWeight }); if(openPanel !== 'suggest' || !output.isConnected) break; suggestions.push(proposal); suggestions.sort((a,b)=>b.score-a.score);
-        output.innerHTML = suggestions.map((s,i)=>{ const n=s.warns.filter((w)=>!w.startsWith('(soft)')).length; return `<div class="card"><img src="${miniMap(s.items)}"><b>${Math.round(s.score)}</b><span class="micro">LIGHT ${Math.round(s.lightSat*100)}% · ${n ? n+' ISSUES' : 'CLEAR'}</span><button class="btn" data-i="${i}" ${n ? 'disabled' : ''}>Use</button></div>`; }).join('');
-        output.querySelectorAll('button').forEach((b)=>b.onclick=()=>{ const proposal=suggestions[+b.dataset.i]; if(proposal.warns.some((w)=>!w.startsWith('(soft)'))) return toast('Not safe to apply yet'); state.items=proposal.items.map(strip);rescore();save();toast('Applied — switch to Edit to tweak'); });
-      }
-      button.disabled=false;
+      if (suggestBusy) return;
+      const mf = $('#sF').value === '1', source = state.items.map(strip), fresh = [];
+      suggestBusy = true; drawSuggestions('Packing spaced pots…');
+      try {
+        for (const seed of [1, 77, 7920].map((x) => x + Math.floor(Math.random() * 1e5))) {
+          await new Promise((r) => setTimeout(r, 50));
+          fresh.push(await optimizeAsync(source, state.room, { seed, moveFurniture: mf, winWeight }));
+          fresh.sort((a, b) => b.score - a.score);
+          suggestions = fresh.slice(); persistSuggestions(); drawSuggestions(fresh.length < 3 ? 'Packing spaced pots…' : '');
+        }
+      } finally { suggestBusy = false; drawSuggestions(); }
     };
   },
   items() {
@@ -609,23 +621,13 @@ const PANELS = {
       <div class="cards">${list.map((l, i) => `<div class="card"><img src="${miniMap(l.items)}"><b>${Math.round(l.score ?? 0)}</b><span class="micro">${esc(l.name)}</span><div class="row"><button class="btn" data-load="${i}">Load</button><button class="btn danger" data-del="${i}">${ICON.trash}</button></div></div>`).join('') || '<span class="micro">NONE YET</span>'}</div>`);
       $('#backSuggest').onclick = () => PANELS.suggest();
       $('#lSave').onclick = async () => { list.unshift({ name: $('#lName').value || new Date().toLocaleString(), score: lastEval?.score, room: state.room, items: stripState().items, ts: Date.now() }); await persist(); render(); toast('Saved'); };
-      $('#sheetBody').querySelectorAll('[data-load]').forEach((b) => b.onclick = () => { const plan = migratePlan(list[+b.dataset.load]); if(plan.room) {state.room=plan.room;buildRoom();} state.items = plan.items.map((i) => ({ ...i })); syncMeshes(true); rescore(); save(); toast('Loaded'); });
+      $('#sheetBody').querySelectorAll('[data-load]').forEach((b) => b.onclick = () => { const plan = migratePlan(list[+b.dataset.load]); if(plan.room) {state.room=plan.room;buildRoom();} applyPlan(plan.items, 'Loaded'); });
       $('#sheetBody').querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => { list.splice(+b.dataset.del, 1); await persist(); render(); }); };
     render();
   },
-  async real() {
-    let renders = []; try { renders = await api('/api/renders'); } catch (e) { toast(e.message); }
-    const gal = renders.map((r) => { const img = r.files.find((f) => f === 'real.png') || 'view.jpg'; const splat = r.files.find((f) => /\.(spz|ply|splat|ksplat)$/.test(f)), pano = r.files.find((f) => /^pano\./.test(f));
-      return `<figure><a href="/renders/${r.id}/${img}" target="_blank"><img loading="lazy" src="/renders/${r.id}/${img}"></a><figcaption><span class="micro">${esc(r.status.state || '')} · ${esc(r.id)}</span><span class="row" style="margin:0">${splat ? `<a class="btn gold" href="world.html?r=${encodeURIComponent(r.id)}&f=${encodeURIComponent(splat)}">${ICON.globe}Walk in 3D</a>` : ''}${pano ? `<a class="btn" href="world.html?r=${encodeURIComponent(r.id)}&f=${encodeURIComponent(pano)}">${ICON.pano}360°</a>` : ''}</span></figcaption></figure>`; }).join('');
-    openSheet('real', `<h3>See it <em>for real</em></h3><p class="sub">Sends this view to Hermes: a gpt-image-2 photo, a 360° panorama and a walkable 3D splat (about 2 min).</p>
-      <textarea id="rNote" placeholder="Anything to emphasise — time of day, LEDs on…"></textarea><div class="row"><button class="btn gold" id="rGo">${ICON.camera}Make it real</button></div><div class="gallery">${gal}</div>`);
-    $('#rGo').onclick = async () => {
-      const camPos = camera.position.clone(), tgt = controls.target.clone(), was = view; if (view === 'top') setView('overview');
-      const v = snapshot(); setView('top'); const top = snapshot(); setView(was); camera.position.copy(camPos); controls.target.copy(tgt); controls.update();
-      const r = await api('/api/render', { method: 'POST', body: JSON.stringify({ view: v, top, note: $('#rNote').value, layout: { ...stripState(), score: lastEval?.score, warns: lastEval?.warns } }) });
-      toast(r.chat ? 'Rendering — Hermes is on it' : `Queued ${r.id}; chat offline`, 4000); PANELS.real();
-    };
-    polls.push(setInterval(() => { if (openPanel === 'real') api('/api/renders').then((n) => { if (JSON.stringify(n.map((r) => [r.id, r.files.length, r.status.state])) !== JSON.stringify(renders.map((r) => [r.id, r.files.length, r.status.state]))) PANELS.real(); }).catch(() => {}); }, 8000));
+  real() {
+    if (window.GR?.real) { setRealLook(true); return; }
+    toast('Real view generator is loading — try again shortly');
   },
   async scan() {
     let scans = []; try { scans = await api('/api/scans'); } catch (e) { toast(e.message); }
@@ -672,13 +674,17 @@ async function pollChat() {
   } catch (e) { const s = $('#cState'); if (s) s.textContent = e.message; }
 }
 
-// Real is a scene filter, not a render-gallery dock. Aligned scans may override it via GR.setRealScene.
-let realScene = null;
+// Real keeps selection/raycast geometry intact; generated content owns coverage.
+let realScene = null, realCoverage = false;
+function updateRealVisibility() {
+  if (realScene) realScene.visible = realLook;
+  roomGroup.visible = itemGroup.visible = !(realLook && realCoverage);
+}
 function setRealLook(on) {
-  realLook = !!on; if(floorMesh) { floorMesh.material.map = realLook ? realCarpet : carpetTex(); floorMesh.material.needsUpdate = true; } $('#bReal').setAttribute('aria-pressed', realLook);
-  if (realScene) { realScene.visible = realLook; roomGroup.visible = itemGroup.visible = !realLook; }
-  else { roomGroup.visible = itemGroup.visible = true; syncMeshes(true); }
-  toast(realLook ? (realScene ? 'Real · aligned room scan' : 'Real · your plant photo cutouts · diffuse north light') : 'Procedural room');
+  realLook = !!on; $('#bReal').setAttribute('aria-pressed', realLook);
+  updateRealVisibility();
+  window.GR?.real?.setEnabled(realLook);
+  toast(realLook ? 'Real · hold still for a photoreal view' : 'Procedural room');
 }
 // ───────── boot ─────────
 async function loadPlants() {
@@ -706,6 +712,21 @@ async function boot() {
     get state() { return state; }, get mode() { return mode; }, get view() { return view; }, get selected() { return selected; }, get lastEval() { return lastEval; },
     meshOf: (id) => meshes.get(id), itemById: (id) => state.items.find((i) => i.id === id), plantMeta: (id) => PLANT_META[id],
     footprint, baseY: (it) => baseY(it, state.items), lightAt: (x, z, y) => lightAt(x, z, state.items, y), centroid: () => centroid(state.room), bounds: () => bounds(state.room),
+    // Layout APIs for voice/Hermes. suggest() fills the same list the Suggest panel shows.
+    async suggest(count = 3, opts = {}) {
+      if (suggestBusy) throw new Error('Already generating suggestions');
+      suggestBusy = true; drawSuggestions();
+      try {
+        const source = state.items.map(strip), fresh = [];
+        for (let i = 0; i < Math.max(1, Math.min(5, count)); i++) { fresh.push(await optimizeAsync(source, state.room, { seed: Math.floor(Math.random() * 1e6), moveFurniture: !!opts.moveFurniture, winWeight })); fresh.sort((a, b) => b.score - a.score); suggestions = fresh.slice(); persistSuggestions(); drawSuggestions(); }
+      } finally { suggestBusy = false; drawSuggestions(); }
+      return GR.suggestions();
+    },
+    suggestions: () => suggestions.map((x, i) => ({ index: i, score: Math.round(x.score), light: Math.round(x.lightSat * 100), issues: x.warns.filter((w) => !w.startsWith('(soft)')) })),
+    applySuggestion(i) { const pr = suggestions[i]; if (!pr) throw new Error('No suggestion ' + i); if (pr.warns.some((w) => !w.startsWith('(soft)'))) throw new Error('That suggestion has unresolved issues'); applyPlan(pr.items, 'Applied suggestion ' + (i + 1)); return { score: Math.round(lastEval.score) }; },
+    async listLayouts() { let list = []; try { list = await api('/api/layouts'); } catch { list = JSON.parse(localStorage.getItem('gr_layouts') || '[]'); } return list; },
+    async loadLayout(name) { const list = await GR.listLayouts(); const l = list.find((x) => x.name === name) || list.find((x) => String(x.name).toLowerCase().includes(String(name).toLowerCase())); if (!l) throw new Error('No saved layout named ' + name); const plan = migratePlan(l); if (plan.room) { state.room = plan.room; buildRoom(); } applyPlan(plan.items, 'Loaded ' + l.name); return { name: l.name, score: Math.round(lastEval.score) }; },
+    async saveLayout(name) { const list = await GR.listLayouts(); list.unshift({ name: name || new Date().toLocaleString(), score: lastEval?.score, room: state.room, items: stripState().items, ts: Date.now() }); localStorage.setItem('gr_layouts', JSON.stringify(list)); await api('/api/layouts', { method: 'PUT', body: JSON.stringify(list) }).catch(() => {}); return { saved: list[0].name }; },
     setMode, setView, select(id) { selected = id; drawSelection(); if (id) openItem(id); }, openItem, openSheet, closeSheet, openPanel: (k) => { stopPolls(); PANELS[k] && PANELS[k](); },
     moveItem(id, x, z) { const it = GR.itemById(id); if (!it) return false; it.x = x; it.z = z; rescore(); save(); return true; },
     setProps(id, props) { const it = GR.itemById(id); if (!it) return false; Object.assign(it, props); if (it.kind === 'plant') { if ('potD' in props && !it.box) it.w = it.d = it.potD; it.h = it.potH + it.height; } const g = meshes.get(id); if (g) { itemGroup.remove(g); meshes.delete(id); } rescore(); save(); return true; },
@@ -717,11 +738,20 @@ async function boot() {
     saveState: save, rescore, rebuildItem(id) { const g = meshes.get(id); if (g) { itemGroup.remove(g); meshes.delete(id); } syncMeshes(); },
     addHubItem,
     addDock(d) { if (HUB_KEYS.has(d.key)) return addHubItem(d); const old = EXTRA_DOCK.findIndex((x) => x.key === d.key); if(old >= 0) EXTRA_DOCK.splice(old, 1); EXTRA_DOCK.push({ modes: ['explore', 'edit'], ...d }); PANELS[d.key] = d.open; drawDock(); },
-    setRealLook, get realLook() { return realLook; }, setRealScene(object) { if(realScene) scene.remove(realScene); realScene=object; if(object) scene.add(object); setRealLook(realLook); },
+    setRealLook, get realLook() { return realLook; },
+    setRealScene(object) { if(realScene) scene.remove(realScene); realScene=object; if(object) scene.add(object); realCoverage=false; updateRealVisibility(); },
+    setRealCoverage(covered) { realCoverage=!!covered; updateRealVisibility(); },
+    proceduralRoots: [roomGroup, itemGroup],
+    withProceduralRender(fn) {
+      const extras=scene.children.filter(o=>o!==roomGroup&&o!==itemGroup&&!o.isLight&&o!==sun.target);
+      const objects=[...new Set([roomGroup,itemGroup,...extras,heatMesh].filter(Boolean))], saved=objects.map(o=>o.visible);
+      try { extras.forEach(o=>o.visible=false);roomGroup.visible=itemGroup.visible=true;if(heatMesh)heatMesh.visible=false;cutaway();nearHide();orientBillboards();return fn(); }
+      finally { objects.forEach((o,i)=>o.visible=saved[i]); }
+    },
     addPanel(key, fn) { PANELS[key] = fn; }, addItemAction(a) { ITEM_ACTIONS.push(a); }, onFrame(fn) { FRAME_HOOKS.push(fn); },
     project(x, z, y = 0.15) { const v = new THREE.Vector3(x, y, z).project(camera); const r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; },
   };
-  for (const m of ['zen', 'history', 'ar', 'voice', 'almanac', 'replay', 'scan_live']) import(`./modules/${m}.js`).then((mod) => mod.init && mod.init(GR)).catch((e) => { if (!String(e).includes('Failed to fetch')) console.warn('module', m, e); });
+  for (const m of ['real', 'zen', 'history', 'ar', 'voice', 'almanac', 'replay', 'scan_live']) import(`./modules/${m}.js`).then((mod) => mod.init && mod.init(GR)).catch((e) => { if (!String(e).includes('Failed to fetch')) console.warn('module', m, e); });
   window.__garden = { get state() { return state; }, evaluate, optimize, optimizeAsync, migratePlan, miniMap, potGap, breathingRoom, clearanceZones, rescore, setMode, setView, get mode() { return mode; },
     project(x, z, y = 0.15) { const v = new THREE.Vector3(x, y, z).project(camera); const r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; } };
 }

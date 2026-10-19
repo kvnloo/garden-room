@@ -92,6 +92,29 @@ try {
  console.log('PASS real GPT tell_hermes tool posts feedback');
  await page.waitForFunction(()=>{const events=window.__voiceEvents;const tool=events.findLastIndex(e=>e.type==='response.function_call_arguments.done'&&e.name==='tell_hermes');return tool>=0&&events.slice(tool+1).some(e=>e.type==='response.output_audio_transcript.done')&&events.filter(e=>e.type==='response.created').length===events.filter(e=>e.type==='response.done').length;},null,{timeout:25000});
  await page.waitForFunction(()=>GR.voice.getState().status!=='Speaking');
+ // Natural requests (no tool names): GPT must act on the app itself, not tell him to do it.
+ const layoutBefore = await page.evaluate(()=>JSON.stringify(GR.state.items.filter(i=>i.kind==='plant').map(i=>[i.id,i.x,i.z])));
+ await page.evaluate(()=>{
+  window.__voiceChannel.send(JSON.stringify({type:'conversation.item.create',item:{type:'message',role:'user',content:[{type:'input_text',text:'The plants look messy. Can you rearrange them for me? Just pick the best layout and do it.'}]}}));
+  window.__voiceChannel.send(JSON.stringify({type:'response.create'}));
+ });
+ await page.waitForFunction(b=>JSON.stringify(GR.state.items.filter(i=>i.kind==='plant').map(i=>[i.id,i.x,i.z]))!==b,layoutBefore,{timeout:90000});
+ const used = await page.evaluate(()=>window.__voiceEvents.filter(e=>e.type==='response.function_call_arguments.done').map(e=>e.name));
+ assert.ok(used.some(n=>['suggest_layouts','apply_layout','app_action'].includes(n)), 'GPT used app tools: '+used.join(','));
+ console.log('PASS natural "rearrange them" -> GPT tools '+[...new Set(used)].join(',')+' -> plants moved');
+ await page.evaluate(()=>{ if(!window.__lastEvt){ window.__lastEvt=Date.now(); const o=window.__voiceChannel.onmessage; window.__voiceChannel.addEventListener('message',()=>{window.__lastEvt=Date.now();}); } });
+ await page.waitForFunction(()=>{const ev=window.__voiceEvents;return ev.filter(e=>e.type==='response.created').length===ev.filter(e=>e.type==='response.done').length && Date.now()-window.__lastEvt>3000 && GR.voice.getState().status!=='Speaking';},null,{timeout:60000,polling:250});
+ const eggBefore = await page.evaluate(()=>{const p=GR.itemById('p02');return [p.x,p.z];});
+ await page.evaluate(()=>{
+  window.__voiceChannel.send(JSON.stringify({type:'conversation.item.create',item:{type:'message',role:'user',content:[{type:'input_text',text:'Move the eggplant to the middle of the room.'}]}}));
+  window.__voiceChannel.send(JSON.stringify({type:'response.create'}));
+ });
+ try { await page.waitForFunction(b=>{const p=GR.itemById('p02');return p.x!==b[0]||p.z!==b[1];},eggBefore,{timeout:60000}); } catch (e) { console.log('DBG', await page.evaluate(()=>JSON.stringify(window.__voiceEvents.filter(e=>/function_call|transcript.done|error/.test(e.type)).slice(-12).map(e=>({t:e.type,n:e.name,a:e.arguments,tr:e.transcript,err:e.error}))))); console.log('DBG recent', await page.evaluate(()=>JSON.stringify((GR.voice.recent||[]).slice(0,4)))); throw e; }
+ console.log('PASS natural "move the eggplant" -> eggplant moved');
+ const said = await page.evaluate(()=>window.__voiceEvents.filter(e=>['response.output_audio_transcript.done','response.audio_transcript.done'].includes(e.type)).map(e=>e.transcript||'').join(' | '));
+ assert.ok(!/yourself|physically|you('ll| will) need to (move|adjust)/i.test(said), 'GPT told owner to do it himself: '+said);
+ console.log('GPT said:', said.slice(-400));
+ await page.waitForFunction(()=>{const ev=window.__voiceEvents;return ev.filter(e=>e.type==='response.created').length===ev.filter(e=>e.type==='response.done').length;},null,{timeout:40000});
  await page.evaluate(async()=>{
   await GR.ar.open();
   window.__voiceChannel.send(JSON.stringify({type:'conversation.item.create',item:{type:'message',role:'user',content:[{type:'input_text',text:'Please call ar_action with action measure now to choose the measurement tool. I will start the camera myself.'}]}}));

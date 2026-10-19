@@ -13,6 +13,9 @@ await page.route('**/api/state',r=>r.fulfill({json:r.request().method()==='GET'?
 await page.route('**/api/layouts',r=>r.fulfill({json:r.request().method()==='GET'?[]:{ok:true}}));
 await page.route('**/api/replay/batch',r=>r.fulfill({json:{ok:true}}));
 await page.route('**/api/zen/progress',r=>r.fulfill({json:{v:1,revision:0}}));
+await page.route('**/api/real/layout',r=>r.fulfill({json:{revision:'a'.repeat(24)}}));
+await page.route('**/api/real/*/views',r=>r.fulfill({json:{views:[],scene:null}}));
+await page.route('**/api/real/view',r=>r.fulfill({json:{id:'b'.repeat(24),revision:'a'.repeat(24)}}));
 await page.route('**/api/chat?*',r=>r.fulfill({json:{messages:[],portal:false}}));
 await page.addInitScript(s=>{localStorage.clear();localStorage.setItem('gr_state',JSON.stringify(s));},current);
 const results={};
@@ -31,10 +34,11 @@ try {
  results['Live contains AR, scan, voice toggle and Hermes thread']='PASS';await page.screenshot({path:dir+'core-live.png'});
  await page.evaluate(()=>{GR.addDock({key:'scan',label:'Legacy scan',icon:'',open:()=>{window.legacyOpened=true}});GR.addHubItem({key:'probe',label:'Probe tool',icon:'',open:()=>{window.hubOpened=true}});GR.openPanel('scan');});
  assert.equal(await page.evaluate(()=>window.legacyOpened),true);assert.equal(await page.locator('#dock button').count(),4);results['legacy addDock routes hub keys without duplicate buttons']='PASS';
+ const photoFallbacks=await page.evaluate(()=>GR.state.items.filter(i=>i.kind==='plant' && GR.meshOf(i.id)?.userData.billboard).length);
  await page.evaluate(()=>{GR.closeSheet();GR.setRealLook(true)});await page.waitForTimeout(800);
- assert.equal(await page.evaluate(()=>GR.state.items.filter(i=>i.kind==='plant' && GR.meshOf(i.id)?.userData.billboard).length),25);
+ assert.equal(await page.evaluate(()=>GR.state.items.filter(i=>i.kind==='plant' && GR.meshOf(i.id)?.userData.billboard).length),photoFallbacks,'Real must not swap procedural plants to photo cutouts');
  assert.equal(await page.getAttribute('#bReal','aria-pressed'),'true');await page.screenshot({path:dir+'core-real.png'});
- await page.evaluate(()=>{GR.setRealLook(false);GR.setView('top')});await page.waitForTimeout(1000);await page.screenshot({path:dir+'core-top.png'});results['Real switches 25 photo cutouts and returns to procedural scene']='PASS';
+ await page.evaluate(()=>{GR.setRealLook(false);GR.setView('top')});await page.waitForTimeout(1000);await page.screenshot({path:dir+'core-top.png'});results['Real requests camera-conditioned photoreal without cutout swap']='PASS';
  const metrics=await page.evaluate(()=>{
    const e=__garden.evaluate(GR.state.items,GR.state.room),ps=GR.state.items.filter(i=>i.kind==='plant');
    let gap=Infinity;for(let i=0;i<ps.length;i++)for(let j=i+1;j<ps.length;j++)gap=Math.min(gap,__garden.potGap(ps[i],ps[j]));
@@ -45,7 +49,8 @@ try {
  assert.equal(metrics.overlaps,0);assert.equal(metrics.spacing,0);assert.deepEqual(metrics.warns,[]);assert.ok(metrics.minGap>=.05);assert.equal(metrics.test.overlap,1);assert.equal(metrics.test.nearSpacing,1);assert.equal(metrics.test.farSpacing,0);assert.ok(metrics.test.overlapPen>metrics.test.nearPen && metrics.test.nearPen>metrics.test.farPen);
  results['spacing regression: overlap > crowded > spaced, current room zero collisions']='PASS';
  const layouts=JSON.parse(fs.readFileSync(new URL('../data/layouts.json',import.meta.url),'utf8'));
- const old=await page.evaluate((l)=>{const e=__garden.evaluate(l.items,l.room);return {score:e.score,overlaps:e.overlaps,spacing:e.spacingViolations,warnings:e.warns.length};},layouts.find(l=>l.name==='before cleanup'));
+ const baseline=layouts.find(l=>l.name==='before cleanup');
+ const old=baseline?await page.evaluate((l)=>{const e=__garden.evaluate(l.items,l.room);return {score:e.score,overlaps:e.overlaps,spacing:e.spacingViolations,warnings:e.warns.length};},baseline):{benchmarkFixture:'not present; owner layouts are not a test fixture'};
  const parity=await page.evaluate(async()=>{const a=__garden.optimize(GR.state.items,GR.state.room,{seed:3,iters:40}),b=await __garden.optimizeAsync(GR.state.items,GR.state.room,{seed:3,iters:40});return {sync:a.score,worker:b.score};});assert.ok(Math.abs(parity.sync-parity.worker)<1e-7); results['worker optimizer matches direct seeded score']='PASS';
  await page.evaluate(()=>{GR.setMode('edit');GR.openPanel('items')});await page.click('#iStand');
  const stand=await page.evaluate(()=>{const s=GR.state.items.find(i=>i.kind==='stand'),p=GR.itemById('p14');window.restorePlant={x:p.x,z:p.z};GR.setProps(s.id,{x:1.8,z:1.8});GR.moveItem(p.id,s.x,s.z);return {h:s.h,base:GR.baseY(p),guess:s.guess};});assert.equal(stand.base,stand.h);assert.equal(stand.guess,true);
